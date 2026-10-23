@@ -299,14 +299,35 @@ public class ViewLogin : MonoBehaviour
         UI_reset_password_input_PW_Guide.gameObject.SetActive(false);
         UI_reset_password_input_PW2_Guide.gameObject.SetActive(false);
 
+        // 회원 정보를 못 읽었으면(조회 실패/없는 아이디) 바꾸지 않는다
+        if (memberTable == null || memberTable.Rows.Count == 0)
+        {
+            UI_reset_password_input_CPW_Guide.text = "회원 정보를 불러오지 못했습니다. 다시 시도해 주세요.";
+            UI_reset_password_input_CPW_Guide.gameObject.SetActive(true);
+            LayoutRebuilder.ForceRebuildLayoutImmediate((RectTransform)parent);
+            return;
+        }
+
         foreach (DataRow row in memberTable.Rows)
         {
             userId = row["mem_userId"].ToString();
 
-            if (currentPasseword != row["mem_password"].ToString())
+            // 이전: 입력한 평문과 저장된 값(Base64)을 그대로 비교해서 항상 '올바르지 않습니다'가 떴다
+            if (!PasswordHasher.Verify(currentPasseword, row["mem_password"].ToString()))
             {
                 checkCurrentPasswordError = true;
                 UI_reset_password_input_CPW_Guide.text = "현재 비밀번호가 올바르지 않습니다.";
+                UI_reset_password_input_CPW_Guide.gameObject.SetActive(true);
+            }
+
+            // 정지(2)/잠금(3) 계정은 여기서 바꾸지 못하게 한다. 비밀번호 저장 시 상태가 1(정상)로 바뀌어 스스로 풀리기 때문.
+            string status = row["mem_status"].ToString();
+            if (status == "2" || status == "3")
+            {
+                checkCurrentPasswordError = true;
+                UI_reset_password_input_CPW_Guide.text = status == "2"
+                    ? "계정이 중지상태 입니다."
+                    : "계정이 잠겼습니다. 최고관리자에게 문의하여 임시비밀번호를 발급받으세요.";
                 UI_reset_password_input_CPW_Guide.gameObject.SetActive(true);
             }
 
@@ -339,7 +360,8 @@ public class ViewLogin : MonoBehaviour
         //비밀번호 변경
         if (!checkCurrentPasswordError && !checkNewPasswordError && !checkNewPassword2Error)
         {
-            serverManager.UpdateUserPassword(userId, newPassword);
+            // 이전: 새 비밀번호를 평문 그대로 저장해서 다음 로그인이 실패했다
+            serverManager.UpdateUserPassword(userId, PasswordHasher.Hash(newPassword));
 
             //대시보드로 이동
             UI_LoginGuide.text = "";
@@ -371,24 +393,35 @@ public class ViewLogin : MonoBehaviour
 
     public void ActionLogin(string userID, string userPW)
     {
-        Debug.Log("ds: " + serverManager.ds_member.DataSetName);
-        Debug.Log($"user Login : {userID}, {userPW}");
-        userPW = mainManager.Encode(userPW);
-        memberTable = new DataTable();
+        // 비밀번호는 로그에 남기지 않는다 (이전: 평문 비밀번호를 Debug.Log 로 출력 → 로그 뷰어/로그 파일에 노출)
+        Debug.Log($"user Login : {userID}");
+
         memberTable = serverManager.GetMemberDataLogin(userID);
 
         bool loginCheck = false;
         bool IdCheck = false;
 
+        // 예전 형식(Base64)으로 저장된 비밀번호면 로그인 성공 후 해시로 바꿔 저장한다
+        string upgradedHash = null;
+
 
         foreach (DataRow row in memberTable.Rows)
         {
             IdCheck = true;
-            
-            if (userID == row["mem_userId"].ToString() && userPW == row["mem_password"].ToString())
+
+            // 저장된 비밀번호는 PBKDF2 해시 (이전: Base64 라서 DB 만 있으면 원문 복원 가능)
+            bool needsUpgrade;
+            bool passwordOk = PasswordHasher.Verify(userPW, row["mem_password"].ToString(), out needsUpgrade);
+
+            if (userID == row["mem_userId"].ToString() && passwordOk)
             {
                 // 로그인이 성공하면 맴버 데이터를 받아서 처리한다. 
                 loginCheck = true;
+
+                if (needsUpgrade)
+                {
+                    upgradedHash = PasswordHasher.Hash(userPW);
+                }
 
                 //로그인 성공한 맴버의 정보를 저장
                 SetLoginInfo(row);
@@ -438,6 +471,12 @@ public class ViewLogin : MonoBehaviour
         //로그인 성공했을때 바로 넘어감
         if(loginCheck)
         {
+            if (upgradedHash != null)
+            {
+                serverManager.UpgradePasswordHash(mainManager.myData.mem_user_id, upgradedHash);
+                mainManager.myData.mem_password = upgradedHash;
+            }
+
             //접속 로그 추가
             mainManager.InsertConnectionLog();
 

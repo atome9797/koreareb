@@ -980,7 +980,10 @@ public class ViewDangerous : MonoBehaviour
 
             mainManager.loadMsg.text = "산출 데이터 저장 Processing... ";
 
-            var result = await mainManager.RunProcessAsync("python", "SendInsertUpdate.py");
+            // 앱이 실제로 쓰는 DB 경로를 넘긴다 (스크립트 안의 개발 PC 경로 대신). 따옴표 앞 역슬래시 문제를 피하려고 / 로 바꾼다.
+            string dbArgument = "\"" + serverManager.DatabasePath.Replace('\\', '/') + "\"";
+
+            var result = await mainManager.RunProcessAsync("python", "SendInsertUpdate.py " + dbArgument);
 
             Debug.Log("Result: " + result.ToString());
 

@@ -1,12 +1,21 @@
+import os
 import sqlite3
-import pandas as pd
+import sys
 import time
+
+import pandas as pd
 
 start = time.time()  # 시작 시간 저장
 
-# SQLite 데이터베이스 연결
-# conn = sqlite3.connect('C:/Users/user/Desktop/build/부정청약관리프로그램_Data/StreamingAssets/koreareb.db')
-conn = sqlite3.connect('C:/Project-Company/koreareb/Assets/StreamingAssets/koreareb.db')
+# SQLite 데이터베이스 경로: 인자 > 환경변수 KOREAREB_DB > 기존 경로
+# (이전에는 개발 PC 경로가 고정되어 있어 배포 PC 에서는 엉뚱한 DB 를 쓰거나 실패했다)
+# 예) python SendInsertUpdate.py "C:/build/부정청약관리프로그램_Data/StreamingAssets/koreareb.db"
+DEFAULT_DB = 'C:/Project-Company/koreareb/Assets/StreamingAssets/koreareb.db'
+db_path = sys.argv[1] if len(sys.argv) > 1 else os.environ.get('KOREAREB_DB', DEFAULT_DB)
+
+conn = sqlite3.connect(db_path)
+# 앱이 DB 를 쓰는 중이면 바로 실패하지 말고 기다린다
+conn.execute('PRAGMA busy_timeout = 10000')
 
 cursor = conn.cursor()
 
@@ -73,32 +82,43 @@ setvalues = ["data_no", "주택관리번호", "민영국민", "주택명", "동"
 # 업데이트할 테이블 이름
 table_name = 'tb_riskdata'
 
-DF=pd.read_csv(r'SendResult.csv', encoding='CP949', sep=",", low_memory=False)
-DF = DF.iloc[:, :-1]
+DF = pd.read_csv(r'SendResult.csv', encoding='CP949', sep=",", low_memory=False)
 
+# 컬럼은 위치가 아니라 헤더 이름으로 고른다 (이전: DF.iloc[:, :-1] → 마지막 열을 무조건 버림)
+upload_columns = list(columns)
+if all(name in DF.columns for name in setvalues):
+    values = DF[setvalues]
+else:
+    values = DF.iloc[:, :len(columns)]
 
-df_tupleList = list(tuple(DF.itertuples(index=False,name=None)))
-# columns = DF.columns.tolist()
-cursor.execute(f"UPDATE SQLITE_SEQUENCE SET seq = 0 WHERE name = 'tb_checkresult';")
+# 앱이 쓰는 SendResult.csv 의 마지막 열은 inspection_status_result 다 (새로 산출한 행은 'N').
+# 이전에는 이 열을 버리고 INSERT OR REPLACE 로 넣어 기본값 'N' 이 들어갔다. 지금은 CSV 값을 넣으므로 결과는 같다.
+# 같은 신청자를 다시 올릴 때 기존 점검 결과를 남기려면 set_columns 에서 이 컬럼을 빼면 된다.
+if 'inspection_status_result' in DF.columns:
+    values = pd.concat([values, DF[['inspection_status_result']]], axis=1)
+    upload_columns.append('inspection_status_result')
 
-bind_names = ",".join(":" + str(i + 1) for i in range(len(columns)))
-set_columns = ", ".join([f"{column}=excluded.{column}" for column in columns])
+# pandas 의 NaN 은 NULL 로 넣는다
+values = values.astype(object).where(pd.notnull(values), None)
+df_tupleList = list(values.itertuples(index=False, name=None))
 
-# insert_query = f"insert into {table_name} ({', '.join(columns)}) values ({bind_names}) on conflict(data_no) do update set {set_columns}"
-insert_query = f"INSERT OR REPLACE INTO {table_name} ({', '.join(columns)}) VALUES ({bind_names}) RETURNING data_idx;"
+bind_names = ", ".join("?" for _ in upload_columns)
+set_columns = ", ".join(f"{column} = excluded.{column}" for column in upload_columns if column != 'data_no')
 
-print ("insert_query" + insert_query)
+# INSERT OR REPLACE 는 기존 행을 지우고 새로 넣는다 → data_idx 가 바뀌고, 목록에 없는 컬럼(create_date 등)이 초기화된다.
+# ON CONFLICT DO UPDATE(UPSERT) 는 같은 data_no 행을 그대로 두고 값만 바꾼다.
+# change_date(업로드일시)는 이전처럼 올린 시각으로 바꾼다 (대시보드 '최근 1년' 기준).
+# (RETURNING 은 executemany 와 함께 쓰면 최신 파이썬에서 오류가 나서 뺐다)
+insert_query = (f"INSERT INTO {table_name} ({', '.join(upload_columns)}) VALUES ({bind_names}) "
+                f"ON CONFLICT(data_no) DO UPDATE SET {set_columns}, change_date = CURRENT_TIMESTAMP")
 
-sqe = cursor.executemany(insert_query, df_tupleList)
+print("rows :", len(df_tupleList))
 
-conn.commit()
+with conn:  # 한 트랜잭션으로 커밋 (실패하면 전부 롤백)
+    cursor.executemany(insert_query, df_tupleList)
 
 conn.close()
 
-
-print ("insert_query" + insert_query)
-
-print ("END")
+print("END")
 
 print("time :", time.time() - start)  # 현재시각 - 시작시간 = 실행 시간
-

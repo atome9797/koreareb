@@ -70,3 +70,13 @@ crashlytics-build.properties
 # Temporary auto-generated Android Assets
 /[Aa]ssets/[Ss]treamingAssets/aa.meta
 /[Aa]ssets/[Ss]treamingAssets/aa/*
+# SQLite 실행 중에 생기는 임시 파일 (WAL 모드 / 롤백 저널). DB 를 닫으면 사라진다.
+*.db-wal
+*.db-shm
+*.db-journal
+*.db-wal.meta
+*.db-shm.meta
+*.db-journal.meta
+
+# Python
+__pycache__/

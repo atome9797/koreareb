@@ -16,7 +16,7 @@ namespace AlmostEngine.Screenshot.Extra
 
 		void Start ()
 		{
-			m_ScreenshotManager = GameObject.FindObjectOfType<ScreenshotManager> ();
+			m_ScreenshotManager = GameObject.FindFirstObjectByType<ScreenshotManager>();
 			m_Button = GetComponent<Button> ();
 			m_Button.onClick.AddListener (OnClickCallback);
 		}

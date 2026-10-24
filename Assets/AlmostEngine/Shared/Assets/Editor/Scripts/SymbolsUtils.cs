@@ -41,7 +41,7 @@ namespace AlmostEngine
             {
                 RemoveDefine(targetGroup, symbol);
             }
-            Debug.Log(targetGroup.ToString() + " define symbols: " + UnityEditor.PlayerSettings.GetScriptingDefineSymbolsForGroup(targetGroup));
+            Debug.Log(targetGroup.ToString() + " define symbols: " + UnityEditor.PlayerSettings.GetScriptingDefineSymbols(UnityEditor.Build.NamedBuildTarget.FromBuildTargetGroup(targetGroup)));
         }
 
 
@@ -77,14 +77,14 @@ namespace AlmostEngine
 
         public static List<string> GetDefines(BuildTargetGroup buildTargetGroup)
         {
-            var defines = PlayerSettings.GetScriptingDefineSymbolsForGroup(buildTargetGroup);
+            var defines = PlayerSettings.GetScriptingDefineSymbols(UnityEditor.Build.NamedBuildTarget.FromBuildTargetGroup(buildTargetGroup));
             return defines.Split(';').ToList();
         }
 
         public static void SetDefines(BuildTargetGroup buildTargetGroup, List<string> definesList)
         {
             var defines = string.Join(";", definesList.ToArray());
-            PlayerSettings.SetScriptingDefineSymbolsForGroup(buildTargetGroup, defines);
+            PlayerSettings.SetScriptingDefineSymbols(UnityEditor.Build.NamedBuildTarget.FromBuildTargetGroup(buildTargetGroup), defines);
         }
     }
 }

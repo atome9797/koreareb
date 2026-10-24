@@ -147,7 +147,8 @@ public class ViewErrorPopup : BaseView
             pageButtons[i].onClick.AddListener(() => GoToPage(pageNumber));
         }
 
-        input_region.onSubmit.AddListener(delegate { CheckInputRegion(input_region); });
+        // 한글 지역명을 치고 Enter: 마지막 글자가 확정된 뒤 검색한다 (ImeSafeSubmit 설명)
+        ImeSafeSubmit.AddListener(input_region, this, () => CheckInputRegion(input_region));
 
         btn_search_region.onClick.AddListener(delegate { CheckInputRegion(input_region); });
 

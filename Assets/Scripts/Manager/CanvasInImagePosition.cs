@@ -135,7 +135,7 @@ public class CanvasInImagePosition : MonoBehaviour
         popup.Init();        
 
         // Destroy texture to avoid memory leaks
-        if (Application.isPlayer)
+        if (!Application.isEditor)          // 예전 Application.isPlayer 와 같다 (isPlayer 는 지원 중단)
             Destroy(ss);
     }
     private float GetScale(int width, int height, Vector2 scalerReferenceResolution, float scalerMatchWidthOrHeight)

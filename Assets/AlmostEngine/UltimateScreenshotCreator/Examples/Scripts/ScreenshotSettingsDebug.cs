@@ -14,7 +14,7 @@ namespace AlmostEngine.Examples
 
         void OnEnable()
         {
-            ScreenshotManager manager = GameObject.FindObjectOfType<ScreenshotManager>();
+            ScreenshotManager manager = GameObject.FindFirstObjectByType<ScreenshotManager>();
 
             string debugString = "";
 

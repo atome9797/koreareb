@@ -49,7 +49,7 @@ namespace AlmostEngine.Screenshot
 
         public static bool IsSymbolDefined(BuildTargetGroup targetGroup, string symbol)
         {
-            return UnityEditor.PlayerSettings.GetScriptingDefineSymbolsForGroup(targetGroup).Contains(symbol);
+            return UnityEditor.PlayerSettings.GetScriptingDefineSymbols(UnityEditor.Build.NamedBuildTarget.FromBuildTargetGroup(targetGroup)).Contains(symbol);
         }
 
         public static void AndroidLegacyExternalStorage(bool enable = true)

@@ -42,7 +42,8 @@ public class ViewMapSearch : BaseView
     {
         btn_Search.onClick.AddListener(SearchMap);
 
-        Input_map.onSubmit.AddListener(delegate { SearchMap(); });
+        // 한글을 치고 Enter 를 누르면 Unity 6 에서는 마지막 글자가 아직 조합 중이다. 확정된 뒤 검색한다
+        ImeSafeSubmit.AddListener(Input_map, this, SearchMap);
     }
 
     public void Init()

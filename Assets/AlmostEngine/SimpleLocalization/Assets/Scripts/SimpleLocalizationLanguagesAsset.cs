@@ -19,7 +19,7 @@ namespace AlmostEngine.SimpleLocalization
 		public static void SetLanguage (string id)
 		{
 			m_CurrentLanguageID = id;
-			ISimpleLocalizer[] localizers = GameObject.FindObjectsOfType<ISimpleLocalizer> ();
+			ISimpleLocalizer[] localizers = GameObject.FindObjectsByType<ISimpleLocalizer>(FindObjectsSortMode.InstanceID);
 			foreach (var l in localizers) {
 				l.OnLanguageChanged (id);
 			}

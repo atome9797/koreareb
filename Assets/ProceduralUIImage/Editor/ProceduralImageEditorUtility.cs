@@ -21,10 +21,10 @@ namespace UnityEditor.UI {
 				Selection.activeGameObject = o;
 			}
 			else {
-				if(GameObject.FindObjectOfType<Canvas>()==null)	{
+				if(GameObject.FindFirstObjectByType<Canvas>()==null)	{
 					EditorApplication.ExecuteMenuItem("GameObject/UI/Canvas");
 				}
-				Canvas c = GameObject.FindObjectOfType<Canvas>();
+				Canvas c = GameObject.FindFirstObjectByType<Canvas>();
 
                 //Set Texcoord shader channels for canvas
                 c.additionalShaderChannels |= AdditionalCanvasShaderChannels.TexCoord1 | AdditionalCanvasShaderChannels.TexCoord2 | AdditionalCanvasShaderChannels.TexCoord3;

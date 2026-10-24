@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.Networking;
 using UnityEngine.EventSystems;
 using SFB;
 
@@ -46,8 +47,9 @@ public class CanvasSampleOpenFileText : MonoBehaviour, IPointerDownHandler {
 #endif
 
     private IEnumerator OutputRoutine(string url) {
-        var loader = new WWW(url);
-        yield return loader;
-        output.text = loader.text;
+        using (var loader = UnityWebRequest.Get(url)) {
+            yield return loader.SendWebRequest();
+            output.text = loader.downloadHandler.text;
+        }
     }
 }

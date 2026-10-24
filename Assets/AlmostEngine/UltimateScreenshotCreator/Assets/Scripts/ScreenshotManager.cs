@@ -155,7 +155,7 @@ namespace AlmostEngine.Screenshot
         {
             if (m_ScreenshotTaker == null)
             {
-                m_ScreenshotTaker = GameObject.FindObjectOfType<ScreenshotTaker>();
+                m_ScreenshotTaker = GameObject.FindFirstObjectByType<ScreenshotTaker>();
             }
             if (m_ScreenshotTaker == null)
             {

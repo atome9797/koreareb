@@ -139,7 +139,7 @@ namespace PygmyMonkey.ColorPalette
 		
 		public static void UpdatePaletteObjectsInCurrentScene()
 		{
-			ColorPaletteObject[] colorPaletteObjectArray = UnityEngine.Object.FindObjectsOfType<ColorPaletteObject>() ;
+			ColorPaletteObject[] colorPaletteObjectArray = UnityEngine.Object.FindObjectsByType<ColorPaletteObject>(FindObjectsSortMode.InstanceID) ;
 			foreach (ColorPaletteObject colorPaletteObject in colorPaletteObjectArray)
 			{
 				colorPaletteObject.updateColor();

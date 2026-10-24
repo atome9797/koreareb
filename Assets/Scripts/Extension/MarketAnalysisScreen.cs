@@ -245,7 +245,7 @@ public sealed class MarketAnalysisScreen : ExtScreen
         chartArea = ExtUi.Place(area, 16f, 86f, 808f, ChartRows * 40f);
         chartEmpty = ExtUi.Label(left, "", 15f, ExtUi.TextMuted, TextAlignmentOptions.Center);
         ExtUi.Place(chartEmpty, 24f, 300f, 790f, 60f);
-        chartEmpty.enableWordWrapping = true;
+        ExtUi.SetWrap(chartEmpty, true);
 
         RectTransform right = ExtUi.Card(t, 900f, 236f, 880f, 764f);
         tableTitle = ExtUi.Heading(right, 24f, 22f, "", 830f);

@@ -628,8 +628,17 @@ public sealed class MarketAnalysisScreen : ExtScreen
             return;
         }
 
+        // 기다리는 사이 다른 조회가 시작됐거나 화면이 없어졌으면(로그아웃) 더 부르지 않는다
         DataTable regionTable = await Server.GetRegionStatsAsync(country, metric, category, level, period);
+        if (Stale(version))
+        {
+            return;
+        }
         DataTable nationalTable = await Server.GetRegionStatsAsync(country, metric, category, 0, period);
+        if (Stale(version))
+        {
+            return;
+        }
         Dictionary<string, string> prefs = await PrefNames(country);
         if (Stale(version))
         {
@@ -858,6 +867,10 @@ public sealed class MarketAnalysisScreen : ExtScreen
     private async Task RefreshCompare(int version)
     {
         DataTable kr = await Server.GetStatPeriodsAsync(ExtNames.Korea);
+        if (Stale(version))
+        {
+            return;
+        }
         DataTable jp = await Server.GetStatPeriodsAsync(ExtNames.Japan);
         if (Stale(version))
         {
@@ -872,13 +885,25 @@ public sealed class MarketAnalysisScreen : ExtScreen
             string country = Countries[i];
             CompareCard card = compareCards[i];
             DataTable trade0 = await Server.GetRegionStatsAsync(country, "trade", "apartment", 0, period);
+            if (Stale(version))
+            {
+                return;
+            }
             DataTable trades = await Server.GetRegionStatsAsync(country, "trade", "apartment", level, period);
+            if (Stale(version))
+            {
+                return;
+            }
             var nationalRates = new List<KeyValuePair<string, DataRow>>();
             string chartScheme = null;
             double chartRecords = -1;
             foreach (string scheme in Schemes[country])
             {
                 DataTable comp0 = await Server.GetRegionStatsAsync(country, "competition", scheme, 0, period);
+                if (Stale(version))
+                {
+                    return;
+                }
                 if (comp0 != null && comp0.Rows.Count > 0)
                 {
                     nationalRates.Add(new KeyValuePair<string, DataRow>(scheme, comp0.Rows[0]));
@@ -893,6 +918,10 @@ public sealed class MarketAnalysisScreen : ExtScreen
             DataTable comps = chartScheme != null
                 ? await Server.GetRegionStatsAsync(country, "competition", chartScheme, level, period)
                 : null;
+            if (Stale(version))
+            {
+                return;
+            }
             Dictionary<string, string> prefs = await PrefNames(country);
             if (Stale(version))
             {
@@ -1013,20 +1042,16 @@ public sealed class MarketAnalysisScreen : ExtScreen
         }
         ExtUi.Clear(statusArea);
         float y = 0f;
-        if (status == null || status.Rows.Count == 0)
-        {
-            TextMeshProUGUI none = ExtUi.Label(statusArea, "아직 받은 자료가 없습니다. 1단계부터 실행하세요.", 14f, ExtUi.TextMuted);
-            ExtUi.Place(none, 0f, 0f, 492f, 26f);
-            return;
-        }
-        foreach (DataRow row in status.Rows)
+        int shown = 0;
+        foreach (DataRow row in Rows(status))
         {
             string kind = ExtUi.Str(row, "kind");
             double count = ExtUi.Num(row, "row_count");
-            if (kind == "stat" && count <= 0)
+            if (double.IsNaN(count) || count <= 0)
             {
-                continue;
+                continue;       // 집계 행은 자료가 없어도 한 줄이 온다 (COUNT 0)
             }
+            shown++;
             string name = StatusName(kind, ExtUi.Str(row, "country"), ExtUi.Str(row, "category"));
             string span = StatusSpan(kind, ExtUi.Str(row, "span_from"), ExtUi.Str(row, "span_to"));
             TextMeshProUGUI a = ExtUi.Label(statusArea, name, 14f, ExtUi.TextSub);
@@ -1040,6 +1065,11 @@ public sealed class MarketAnalysisScreen : ExtScreen
             {
                 break;
             }
+        }
+        if (shown == 0)
+        {
+            TextMeshProUGUI none = ExtUi.Label(statusArea, "아직 받은 자료가 없습니다. 1단계부터 실행하세요.", 14f, ExtUi.TextMuted);
+            ExtUi.Place(none, 0f, 0f, 492f, 26f);
         }
     }
 

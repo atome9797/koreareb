@@ -22,7 +22,7 @@ public sealed class PythonResult
 /// <summary>
 /// 파이썬 실행 (MainManager.RunProcessAsync 와 같은 방식 + 환경 변수, UTF-8, 진행 줄 전달).
 /// API 키는 명령줄이 아니라 환경 변수로 넘긴다 (명령줄은 다른 프로그램이 볼 수 있다).
-/// 진행 줄(onLine)은 호출한 스레드(메인 스레드)로 돌려서 부른다.
+/// 진행 줄(onLine)은 호출한 스레드(메인 스레드)로 돌려서 부른다. 메인 스레드에서 부를 것.
 /// </summary>
 public static class PythonRunner
 {
@@ -66,17 +66,11 @@ public static class PythonRunner
                         return;
                     }
                     result.LastOutput = e.Data;
-                    if (onLine != null)
+                    // 화면은 메인 스레드에서만 고칠 수 있다. 돌려보낼 곳이 없으면 줄을 버린다 (결과는 LastOutput 에 남는다).
+                    if (onLine != null && context != null)
                     {
                         string line = e.Data;
-                        if (context != null)
-                        {
-                            context.Post(_ => onLine(line), null);
-                        }
-                        else
-                        {
-                            onLine(line);
-                        }
+                        context.Post(_ => onLine(line), null);
                     }
                 };
                 process.ErrorDataReceived += (sender, e) =>

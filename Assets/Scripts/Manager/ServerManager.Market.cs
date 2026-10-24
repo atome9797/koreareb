@@ -183,7 +183,11 @@ public partial class ServerManager
         return RunQueryAsync("GetJapanApplicantDetail", db => db.Query(sql, P("@key", applicantKey)));
     }
 
-    /// <summary>점검여부 저장 (N 미점검 / Y 점검완료 / Z 해당없음). 적발 판정이 있는 점검완료 행은 바꾸지 않는다.</summary>
+    /// <summary>
+    /// 점검여부 저장 (N 미점검 / Y 점검완료 / Z 해당없음). 적발로 저장된 점검완료 행은 바꾸지 않는다.
+    /// 미점검·해당없음으로 바꾸면 결과(판정·유형)는 지운다 — 결과는 점검완료 행에만 있다.
+    /// unauth_decision 이 NULL(결과 없음)이어도 조건이 NULL 이 되지 않도록 IFNULL 로 비교한다.
+    /// </summary>
     public Task<int> SaveJapanInspectionAsync(List<string> keys, string status)
     {
         if (status != "N" && status != "Y" && status != "Z")
@@ -193,8 +197,11 @@ public partial class ServerManager
 
         List<string> copy = new List<string>(keys);
         const string sql =
-            "UPDATE tb_jp_applicant SET inspection_status_result = @status, inspected_at = datetime('now', 'localtime') " +
-            "WHERE applicant_key = @key AND NOT (inspection_status_result = 'Y' AND unauth_decision = 1);";
+            "UPDATE tb_jp_applicant SET inspection_status_result = @status, " +
+            "unauth_decision = CASE WHEN @status = 'Y' THEN unauth_decision ELSE NULL END, " +
+            "unauth_type = CASE WHEN @status = 'Y' THEN unauth_type ELSE NULL END, " +
+            "inspected_at = datetime('now', 'localtime') " +
+            "WHERE applicant_key = @key AND NOT (inspection_status_result = 'Y' AND IFNULL(unauth_decision, 0) = 1);";
         return RunAsync(db =>
         {
             int changed = 0;
@@ -209,7 +216,7 @@ public partial class ServerManager
         });
     }
 
-    /// <summary>점검 결과 저장 (decision 0 통과 / 1 적발 + 유형). 점검완료(Y) 행에만 저장한다.</summary>
+    /// <summary>점검 결과 저장 (decision 0 통과 + 유형 null / 1 적발 + 유형). 점검완료(Y) 행에만 저장한다.</summary>
     public Task<int> SaveJapanResultAsync(List<string> keys, int decision, string type)
     {
         List<string> copy = new List<string>(keys);

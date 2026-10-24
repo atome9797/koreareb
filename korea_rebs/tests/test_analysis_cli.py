@@ -169,6 +169,42 @@ class CliTest(unittest.TestCase):
         code, _, err = self.run_cli(jp_fraud, ['import', '--scheme', 'jp_public_housing', os.path.join(self.temp.dir, 'none.csv')])
         self.assertNotEqual(code, 0)
 
+    def test_db_after_subcommand(self):
+        out, errs = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(errs):
+            code = market_data.main(['status', '--db', self.temp.path])
+        self.assertEqual(code, 0, errs.getvalue())
+        self.assertIn('regions', json.loads(out.getvalue()))
+
+
+class DbOptionPlacementTest(unittest.TestCase):
+    """--db, --config 는 하위 명령 앞뒤 어디에 써도 된다. 둘 다 쓰면 뒤의 값이 이긴다."""
+
+    CASES = [
+        (['--db', 'a', '{cmd}'], 'a'),
+        (['{cmd}', '--db', 'b'], 'b'),
+        (['--db', 'a', '{cmd}', '--db', 'b'], 'b'),
+        (['{cmd}'], None),
+    ]
+
+    def check(self, module, command):
+        parser = module.build_parser()
+        for template, expected in self.CASES:
+            argv = [command if part == '{cmd}' else part for part in template]
+            with self.subTest(module=module.__name__, argv=argv):
+                args = parser.parse_args(argv)
+                self.assertEqual(args.db, expected)
+                self.assertEqual(args.command, command)
+        args = parser.parse_args([command, '--config', 'c.json'])
+        self.assertEqual(args.config, 'c.json')
+        self.assertIsNone(parser.parse_args([command]).config)
+
+    def test_market_data(self):
+        self.check(market_data, 'analyze')
+
+    def test_jp_fraud(self):
+        self.check(jp_fraud, 'score')
+
 
 if __name__ == '__main__':
     unittest.main()

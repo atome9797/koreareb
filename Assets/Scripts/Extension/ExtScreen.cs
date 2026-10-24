@@ -37,20 +37,29 @@ public abstract class ExtScreen : MonoBehaviour
         gameObject.SetActive(true);
         if (!built)
         {
-            built = true;
             try
             {
                 Build();
+                built = true;
             }
             catch (Exception e)
             {
+                // 반쯤 만든 화면은 지우고, 다음에 열 때 처음부터 다시 만든다
                 Debug.LogError("[확장] " + MenuName + " 화면을 만들지 못했습니다: " + e.Message);
                 Debug.LogException(e);
+                ExtUi.Clear(transform);
                 Alert(MenuName + " 화면을 만들지 못했습니다.\n" + e.Message);
                 return;
             }
         }
-        OnShow();
+        try
+        {
+            OnShow();
+        }
+        catch (Exception e)
+        {
+            Debug.LogException(e);
+        }
     }
 
     public void Hide()

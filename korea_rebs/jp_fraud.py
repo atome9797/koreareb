@@ -6,6 +6,7 @@
   python jp_fraud.py score --db …                     # 모든 일본 신청자 점수 다시 계산
   python jp_fraud.py score --scheme jp_new_condo --round 2026-08 --db …
 
+--db 는 하위 명령 앞뒤 어디에 써도 된다 (앱은 앞에 쓴다).
 점수는 점검 순서를 정하는 참고값이다 (규칙·가중치: config/jp_rules.json, 설명: krjp/jp_rules.py).
 신청자 개인정보는 DB 에만 저장하고 출력하지 않는다.
 """
@@ -13,7 +14,7 @@
 import argparse
 import sys
 
-from krjp import config as configmod, csv_import, db as dbmod, jp_rules, util
+from krjp import cli, config as configmod, csv_import, db as dbmod, jp_rules, util
 
 APPLICANT_COLUMNS = ['applicant_key', 'scheme', 'round_id', 'project_name', 'unit_category', 'unit_no',
                      'application_no', 'applicant_name', 'birth_date', 'phone', 'email', 'address',
@@ -67,6 +68,25 @@ def cmd_score(conn, args, cfg):
     util.info('위험 점수 %d명 (상 %d, 중 %d, 하 %d)' % (len(rows), levels['상'], levels['중'], levels['하']))
 
 
+def build_parser():
+    parser = argparse.ArgumentParser(description='일본 신청자 점검')
+    parser.add_argument('--db', help='앱 DB 경로 (기본: 환경 변수 KOREAREB_DB)')
+    parser.add_argument('--config', help='설정 JSON (선택)')
+    sub = parser.add_subparsers(dest='command')
+    common = [cli.common_options()]     # --db, --config 는 하위 명령 뒤에 써도 된다
+
+    p = sub.add_parser('import', parents=common, help='신청자 CSV 가져오기')
+    p.add_argument('--scheme', required=True, choices=csv_import.SCHEMES)
+    p.add_argument('csv')
+    p.set_defaults(func=cmd_import)
+
+    p = sub.add_parser('score', parents=common, help='위험 점수 계산')
+    p.add_argument('--scheme', choices=csv_import.SCHEMES)
+    p.add_argument('--round')
+    p.set_defaults(func=cmd_score)
+    return parser
+
+
 def main(argv=None):
     for stream in (sys.stdout, sys.stderr):
         try:
@@ -74,21 +94,7 @@ def main(argv=None):
         except (AttributeError, ValueError):
             pass
 
-    parser = argparse.ArgumentParser(description='일본 신청자 점검')
-    parser.add_argument('--db')
-    parser.add_argument('--config')
-    sub = parser.add_subparsers(dest='command')
-
-    p = sub.add_parser('import', help='신청자 CSV 가져오기')
-    p.add_argument('--scheme', required=True, choices=csv_import.SCHEMES)
-    p.add_argument('csv')
-    p.set_defaults(func=cmd_import)
-
-    p = sub.add_parser('score', help='위험 점수 계산')
-    p.add_argument('--scheme', choices=csv_import.SCHEMES)
-    p.add_argument('--round')
-    p.set_defaults(func=cmd_score)
-
+    parser = build_parser()
     args = parser.parse_args(argv)
     if not getattr(args, 'func', None):
         parser.print_help()

@@ -11,6 +11,7 @@
   python market_data.py export --out dashboard/data/market-data.js --db …
   python market_data.py status --db …
 
+--db, --config 는 하위 명령 앞뒤 어디에 써도 된다 (앱은 앞에 쓴다).
 API 키는 환경 변수 KOREAREB_DATA_GO_KR_KEY, KOREAREB_REINFOLIB_KEY 로 넘긴다 (명령줄에 넣지 않는다).
 진행 상황은 'PROGRESS …' 줄로, 오류는 표준 오류의 'ERROR …' 줄로 나온다.
 """
@@ -21,7 +22,7 @@ import json
 import os
 import sys
 
-from krjp import analysis, config as configmod, csv_import, db as dbmod, jp_reinfolib, kr_applyhome, kr_molit, regions, util
+from krjp import analysis, cli, config as configmod, csv_import, db as dbmod, jp_reinfolib, kr_applyhome, kr_molit, regions, util
 from krjp.webapi import ApiError
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -122,13 +123,14 @@ def build_parser():
     parser.add_argument('--db', help='앱 DB 경로 (기본: 환경 변수 KOREAREB_DB)')
     parser.add_argument('--config', help='설정 JSON (선택)')
     sub = parser.add_subparsers(dest='command')
+    common = [cli.common_options()]     # --db, --config 는 하위 명령 뒤에 써도 된다
 
-    p = sub.add_parser('regions', help='지역 마스터 만들기')
+    p = sub.add_parser('regions', parents=common, help='지역 마스터 만들기')
     p.add_argument('--jp', action='store_true', help='일본 市区町村도 받기 (API 키 필요)')
     p.add_argument('--jp-prefs', help='일본 都道府県 코드 (예: 13,14). 비우면 47곳 전부')
     p.set_defaults(func=cmd_regions)
 
-    p = sub.add_parser('kr-trade', help='한국 아파트 매매 실거래가')
+    p = sub.add_parser('kr-trade', parents=common, help='한국 아파트 매매 실거래가')
     p.add_argument('--from', dest='start', required=True, help='계약년월 YYYYMM')
     p.add_argument('--to', dest='end', required=True, help='계약년월 YYYYMM')
     p.add_argument('--regions', help='시군구 5자리 코드 (쉼표)')
@@ -136,32 +138,32 @@ def build_parser():
     p.add_argument('--refresh', action='store_true', help='이미 받은 달도 다시 받기')
     p.set_defaults(func=cmd_kr_trade)
 
-    p = sub.add_parser('kr-competition', help='한국 청약홈 APT 경쟁률')
+    p = sub.add_parser('kr-competition', parents=common, help='한국 청약홈 APT 경쟁률')
     p.add_argument('--from', dest='start', required=True, help='모집공고일 YYYY-MM-DD')
     p.add_argument('--to', dest='end', required=True, help='모집공고일 YYYY-MM-DD')
     p.set_defaults(func=cmd_kr_competition)
 
-    p = sub.add_parser('jp-trade', help='일본 不動産情報ライブラリ 거래가격')
+    p = sub.add_parser('jp-trade', parents=common, help='일본 不動産情報ライブラリ 거래가격')
     p.add_argument('--years', required=True, help='예: 2024 / 2023-2025')
     p.add_argument('--quarters', default='all', help='예: 1-4 / 1,2')
     p.add_argument('--prefs', default='13', help='都道府県 코드 (예: 13,14,27 / all)')
     p.add_argument('--refresh', action='store_true')
     p.set_defaults(func=cmd_jp_trade)
 
-    p = sub.add_parser('import-competition', help='일본 공영주택·신축 맨션 경쟁률 CSV')
+    p = sub.add_parser('import-competition', parents=common, help='일본 공영주택·신축 맨션 경쟁률 CSV')
     p.add_argument('--scheme', required=True, choices=csv_import.SCHEMES)
     p.add_argument('csv')
     p.set_defaults(func=cmd_import_competition)
 
-    p = sub.add_parser('analyze', help='지역별 집계 다시 만들기')
+    p = sub.add_parser('analyze', parents=common, help='지역별 집계 다시 만들기')
     p.set_defaults(func=cmd_analyze)
 
-    p = sub.add_parser('export', help='대시보드 데이터 내보내기')
+    p = sub.add_parser('export', parents=common, help='대시보드 데이터 내보내기')
     p.add_argument('--out', help='JS 파일 경로 (기본: dashboard/data/market-data.js)')
     p.add_argument('--fx', type=float, help='엔화 환산용 원/엔 환율 (예: 9.3). 없으면 각 나라 통화로만 보여 준다')
     p.set_defaults(func=cmd_export)
 
-    p = sub.add_parser('status', help='저장된 데이터 요약 (JSON)')
+    p = sub.add_parser('status', parents=common, help='저장된 데이터 요약 (JSON)')
     p.set_defaults(func=cmd_status)
     return parser
 

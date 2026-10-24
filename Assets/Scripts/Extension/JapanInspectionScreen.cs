@@ -54,7 +54,8 @@ public sealed class JapanInspectionScreen : ExtScreen
     private int levelIndex;
     private int statusIndex;
     private int page;
-    private int loadVersion;
+    private int loadVersion;                 // 목록·건수 조회
+    private int roundsVersion;               // 회차 목록 조회 (목록 조회와 따로 센다: 필터를 눌러도 회차 목록은 버리지 않는다)
     private int detailVersion;
     private readonly List<string> pageKeys = new List<string>();
     private readonly List<RowState> pageStates = new List<RowState>();
@@ -216,7 +217,7 @@ public sealed class JapanInspectionScreen : ExtScreen
             return;
         }
         ExtUi.Clear(resultButtons);
-        float x = ExtUi.ButtonAt(resultButtons, 0f, 15f, 38f, "통과", () => SetResult(0, "통과"), false, 80f);
+        float x = ExtUi.ButtonAt(resultButtons, 0f, 15f, 38f, "통과", () => SetResult(0, null), false, 80f);   // 통과는 유형 없음
         foreach (string type in ResultTypes[Scheme])
         {
             string chosen = type;
@@ -233,7 +234,7 @@ public sealed class JapanInspectionScreen : ExtScreen
 
     private async void LoadRounds()
     {
-        int version = ++loadVersion;
+        int version = ++roundsVersion;
         string current = Round;
         DataTable table1;
         try
@@ -245,7 +246,7 @@ public sealed class JapanInspectionScreen : ExtScreen
             Debug.LogException(e);
             return;
         }
-        if (this == null || version != loadVersion)
+        if (this == null || version != roundsVersion)
         {
             return;
         }
@@ -276,6 +277,10 @@ public sealed class JapanInspectionScreen : ExtScreen
         try
         {
             DataTable all = await Server.GetJapanCountsAsync(scheme, round, null, null);
+            if (this == null || version != loadVersion)
+            {
+                return;
+            }
             DataTable filtered = level == null && status == null ? all : await Server.GetJapanCountsAsync(scheme, round, level, status);
             if (this == null || version != loadVersion)
             {

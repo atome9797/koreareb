@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using TMPro;
 using UnityEngine;
 
@@ -11,14 +12,19 @@ using UnityEngine;
 ///     만드는 법: 일본어 글꼴 파일(예: Noto Sans JP — OFL)을 Assets/Resources/Fonts 에 넣고
 ///     Window > TextMeshPro > Font Asset Creator 에서 Atlas Population Mode = Dynamic 으로 만든 뒤
 ///     Assets/Resources/Fonts/JapaneseFallback SDF.asset 으로 저장한다.
-///  2) 없으면 Windows 글꼴(Yu Gothic UI, Meiryo …)로 동적 TMP 글꼴을 만들어 본다 (PC·Unity 버전에 따라 안 될 수 있다).
+///  2) 없으면 Windows 글꼴 파일(Yu Gothic, Meiryo, BIZ UDGothic, MS Gothic)로 동적 TMP 글꼴을 만들어 본다.
 /// 둘 다 없으면 일본어 지역 이름은 영어 이름으로 보여 주고(ExtNames), 사람·물건 이름의 일본어는 네모로 보인다.
 /// 에디터에서는 플레이를 끝낼 때 붙인 것을 떼어 TMP Settings 에셋이 바뀌지 않게 한다.
 /// </summary>
 public static class ExtFonts
 {
     private const string ResourcePath = "Fonts/JapaneseFallback SDF";
-    private static readonly string[] OsFonts = { "Yu Gothic UI", "Meiryo UI", "Meiryo", "Yu Gothic", "MS Gothic" };
+
+    // Windows 기본 일본어 글꼴 파일 (C:\Windows\Fonts). 앞에서부터 쓴다.
+    private static readonly string[] OsFontFiles =
+    {
+        "YuGothM.ttc", "YuGothR.ttc", "meiryo.ttc", "BIZ-UDGothicR.ttc", "msgothic.ttc",
+    };
 
     private static bool tried;
     private static TMP_FontAsset japanese;
@@ -105,15 +111,51 @@ public static class ExtFonts
     }
 #endif
 
+    /// <summary>
+    /// Windows 글꼴 폴더의 일본어 글꼴 파일로 동적 TMP 글꼴을 만든다.
+    /// CreateDynamicFontFromOSFont 로 만든 Font 에는 글꼴 파일 자료가 없어 TMP 가 읽지 못하므로,
+    /// Font.GetPathsToOSFonts() 의 파일 경로로 new Font(path) 를 만든다 (TMP 가 안내하는 방법).
+    /// </summary>
     private static TMP_FontAsset FromOsFont(TMP_FontAsset primary)
+    {
+        string[] paths;
+        try
+        {
+            paths = Font.GetPathsToOSFonts();
+        }
+        catch (Exception e)
+        {
+            Debug.LogWarning("[확장] Windows 글꼴 목록을 읽지 못했습니다: " + e.Message);
+            return null;
+        }
+        if (paths == null)
+        {
+            return null;
+        }
+
+        foreach (string wanted in OsFontFiles)
+        {
+            foreach (string path in paths)
+            {
+                if (!string.Equals(Path.GetFileName(path), wanted, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+                TMP_FontAsset asset = FromFile(primary, path);
+                if (asset != null)
+                {
+                    return asset;
+                }
+            }
+        }
+        return null;
+    }
+
+    private static TMP_FontAsset FromFile(TMP_FontAsset primary, string path)
     {
         try
         {
-            Font font = Font.CreateDynamicFontFromOSFont(OsFonts, 64);
-            if (font == null)
-            {
-                return null;
-            }
+            Font font = new Font(path);
             TMP_FontAsset asset = TMP_FontAsset.CreateFontAsset(font);
             if (asset == null)
             {
@@ -124,18 +166,18 @@ public static class ExtFonts
             {
                 asset.material.shader = primary.material.shader;
             }
-            // 일본어 글꼴이 없는 PC 에서는 다른 글꼴이 대신 잡힌다. 실제로 일본어 글자를 만들 수 있는지 확인한다.
+            // 실제로 일본어 글자를 만들 수 있는지 확인한다
             if (!asset.TryAddCharacters("日本語東京都区市町村あア"))
             {
-                Debug.LogWarning("[확장] Windows 일본어 글꼴에서 글자를 만들지 못했습니다.");
+                Debug.LogWarning("[확장] " + Path.GetFileName(path) + " 에서 일본어 글자를 만들지 못했습니다.");
                 return null;
             }
-            asset.name = "JapaneseFallback (Windows)";
+            asset.name = "JapaneseFallback (" + Path.GetFileNameWithoutExtension(path) + ")";
             return asset;
         }
         catch (Exception e)
         {
-            Debug.LogWarning("[확장] Windows 일본어 글꼴을 쓰지 못했습니다: " + e.Message);
+            Debug.LogWarning("[확장] " + Path.GetFileName(path) + " 을 쓰지 못했습니다: " + e.Message);
             return null;
         }
     }

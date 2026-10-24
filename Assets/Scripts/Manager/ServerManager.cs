@@ -19,7 +19,7 @@ using UnityEngine;
 /// - 조회 실패 시 로그를 남기고 빈 테이블을 돌려준다(로딩 팝업이 영원히 떠 있지 않도록).
 ///   쓰기 실패는 예외를 그대로 올려 호출한 화면이 알 수 있게 한다.
 /// </summary>
-public class ServerManager : MonoBehaviour
+public partial class ServerManager : MonoBehaviour
 {
     public string m_DatabaseFileName = "koreareb.db";
     public DatabaseAccess m_DatabaseAccess;
@@ -34,6 +34,7 @@ public class ServerManager : MonoBehaviour
 
     private readonly object m_DbLock = new object();
     private volatile DatabaseAccess m_OpenDb;          // 열린 뒤에는 lock 없이 읽는다 (백그라운드 작업 중에도 메인 스레드가 멈추지 않게)
+    private volatile bool m_Closed;                    // 종료·씬 전환으로 닫은 뒤에는 다시 열지 않는다 (늦게 끝난 async 조회가 연결을 새로 열어 남기지 않게)
     private Dictionary<string, string> m_LocalNames;
     private string filePath;
     private string m_DefaultResetHash;                 // 임시 비밀번호 해시 (해시 계산이 느려서 한 번만)
@@ -61,6 +62,8 @@ public class ServerManager : MonoBehaviour
 
     private void CloseDatabase()
     {
+        m_Closed = true;
+
         // 종료 시 오래 걸리는 백그라운드 작업(엑셀 저장 등)이 끝나기를 무한정 기다리지 않는다.
         // 잠금을 못 잡으면 닫지 않고 둔다 (프로세스가 끝나면 OS 가 정리하고, 커밋된 데이터는 안전하다).
         if (!System.Threading.Monitor.TryEnter(m_DbLock, 3000))
@@ -99,6 +102,10 @@ public class ServerManager : MonoBehaviour
             if (m_DatabaseAccess != null)
             {
                 return m_DatabaseAccess;
+            }
+            if (m_Closed)
+            {
+                throw new ObjectDisposedException("ServerManager", "DB 연결을 이미 닫았습니다 (앱 종료 또는 로그아웃).");
             }
 
             filePath = Path.Combine(Application.streamingAssetsPath, m_DatabaseFileName);

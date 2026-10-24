@@ -1,0 +1,83 @@
+{
+  "levels": {
+    "high": 60,
+    "medium": 30
+  },
+  "public_housing": {
+    "recent_move_days": 90,
+    "single_min_residence_years": 3,
+    "household_change_days": 180,
+    "income_edge_ratio": 0.95,
+    "income_limits": {
+      "general": {
+        "1": 1896000,
+        "2": 2276000,
+        "3": 2656000,
+        "4": 3036000,
+        "5": 3416000,
+        "6": 3796000,
+        "add_per_person": 380000
+      },
+      "disabled": {
+        "1": 2568000,
+        "2": 2948000,
+        "3": 3328000,
+        "4": 3708000,
+        "5": 4088000,
+        "6": 4468000,
+        "add_per_person": 380000
+      }
+    },
+    "single_categories": [
+      "単身者向",
+      "単身",
+      "단신",
+      "1인"
+    ],
+    "family_categories": [
+      "家族向",
+      "가족",
+      "세대"
+    ],
+    "ineligible_housing": [
+      "持家",
+      "持ち家",
+      "自己所有",
+      "公営住宅",
+      "都営住宅",
+      "자가",
+      "공영주택"
+    ],
+    "weights": {
+      "PH_RECENT_MOVE": 25,
+      "PH_SINGLE_RESIDENCE": 35,
+      "PH_INCOME_OVER": 45,
+      "PH_INCOME_EDGE": 15,
+      "PH_HOUSEHOLD_CHANGE": 20,
+      "PH_HOUSEHOLD_MISMATCH": 30,
+      "PH_HOUSING_INELIGIBLE": 40,
+      "PH_DUP_PERSON": 40,
+      "PH_DUP_HOUSEHOLD": 30
+    }
+  },
+  "new_condo": {
+    "max_units_per_person": 1,
+    "investment_purposes": [
+      "投資",
+      "투자",
+      "investment",
+      "賃貸",
+      "임대",
+      "転売",
+      "전매"
+    ],
+    "weights": {
+      "NC_MULTI_UNITS": 40,
+      "NC_SHARED_CONTACT": 30,
+      "NC_NAME_MISMATCH": 50,
+      "NC_RESALE_LISTED": 50,
+      "NC_INVESTMENT": 15,
+      "NC_CORPORATE": 15
+    }
+  }
+}

@@ -226,39 +226,74 @@ public class ViewDanji : MonoBehaviour
 
         mainManager.loadMsg.text = "";
 
-        //리스트 조회 초기화
-        ClearListView();
-        
-        CheckTable = null;
-
-        CheckTable = new DataTable();
-
-        SelectMenu.DropdownType(_dropdownType); //검색구분
-        SelectMenu.CheckDFType(BustType); //적발내용
-        SelectMenu.CheckRfxgType(RfxgType); //rfxg
-        SelectMenu.CheckRfxgPerType(PrecentType); //퍼센트
-        CityMenu = SelectMenu.CheckCityToggle(SelectMenu.cityToggles);
-
-        CheckTable = await serverManager.GetMarketManageByDanji(SelectMenu.dateText.FromDate,
-                                                                SelectMenu.dateText.ToDate,
-                                                                _dropdownType,
-                                                                SelectMenu.input_search.text,
-                                                                CityMenu,
-                                                                BustType,
-                                                                RfxgType,
-                                                                PrecentType);
-
-        for (int i = 0; i < 4; i++) 
+        // 중간에 예외가 나도 로딩 팝업은 닫는다 (이전: 예외가 나면 팝업이 계속 떠 있었다)
+        try
         {
-            if(PrecentType[i])
+            //리스트 조회 초기화
+            ClearListView();
+
+            CheckTable = null;
+
+            CheckTable = new DataTable();
+
+            SelectMenu.DropdownType(_dropdownType); //검색구분
+            SelectMenu.CheckDFType(BustType); //적발내용
+            SelectMenu.CheckRfxgType(RfxgType); //rfxg
+            SelectMenu.CheckRfxgPerType(PrecentType); //퍼센트
+            CityMenu = SelectMenu.CheckCityToggle(SelectMenu.cityToggles);
+
+            CheckTable = await serverManager.GetMarketManageByDanji(SelectMenu.dateText.FromDate,
+                                                                    SelectMenu.dateText.ToDate,
+                                                                    _dropdownType,
+                                                                    SelectMenu.input_search.text,
+                                                                    CityMenu,
+                                                                    BustType,
+                                                                    RfxgType,
+                                                                    PrecentType);
+
+            for (int i = 0; i < 4; i++)
             {
-                index = i;
+                if (PrecentType[i])
+                {
+                    index = i;
+                }
+            }
+
+            GoToFirstPage();
+        }
+        catch (Exception e)
+        {
+            Debug.LogException(e);
+        }
+        finally
+        {
+            mainManager.viewLoading.Close();
+        }
+    }
+
+    // 조회가 실패하면 ServerManager 가 컬럼 없는 빈 테이블을 돌려준다. 그때 정렬/필터식을 걸면 예외가 나므로
+    // 결과에 있는 컬럼일 때만 쓴다.
+    private string SafeSort(DataTable table)
+    {
+        if (table == null || string.IsNullOrEmpty(SortTarget))
+        {
+            return "";
+        }
+
+        string column = SortTarget.Trim();
+        int space = column.LastIndexOf(' ');
+
+        if (space > 0)
+        {
+            string direction = column.Substring(space + 1).ToUpperInvariant();
+
+            if (direction == "ASC" || direction == "DESC")
+            {
+                column = column.Substring(0, space).Trim();
             }
         }
 
-        GoToFirstPage();
-
-        mainManager.viewLoading.Close();
+        return table.Columns.Contains(column) ? SortTarget : "";
     }
 
     // 초기화
@@ -734,7 +769,7 @@ public class ViewDanji : MonoBehaviour
         Debug.Log("UPDATE VIEW");
 
         // 현재 정렬 버튼으로
-        CheckTable.DefaultView.Sort = SortTarget;
+        CheckTable.DefaultView.Sort = SafeSort(CheckTable);
 
 
         listTable = null;
@@ -753,7 +788,7 @@ public class ViewDanji : MonoBehaviour
             case 3: inspection_status = "점검여부 = 'Y'"; break;
         }
 
-        DataRow[] selectedRows = listTable.Select(inspection_status);
+        DataRow[] selectedRows = listTable.Columns.Contains("점검여부") ? listTable.Select(inspection_status) : listTable.Select();
 
         selectrowCount = selectedRows.Length;
 
@@ -884,7 +919,7 @@ public class ViewDanji : MonoBehaviour
         //CheckError();
 
         // 기본 차순 NO로 오름 차순 정렬한다.
-        CheckTable.DefaultView.Sort = SortTarget;
+        CheckTable.DefaultView.Sort = SafeSort(CheckTable);
 
         listTable = null;
         listTable = CheckTable.DefaultView.ToTable();

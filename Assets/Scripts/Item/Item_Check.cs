@@ -93,24 +93,10 @@ public class Item_Check : MonoBehaviour
             //viewExecute.btn_checkResultProcess.interactable = true;
         }
 
-                        
-        //DataRow[] rows = viewExecute.resultTable.Select("NO = " + id);
-        DataRow[] rows = viewExecute.resultTable.Select("data_no = '" + id+ "'");
 
-        if (rows.Length > 0)
-        {
-            // 값 변경
-            DataRow row = rows[0];
-            
-            //Debug.Log("row : "+ row["data_no"] + " , id : " + id + ", isSelect : " + row["isSelect"].ToString());
-            
-            row["isSelect"] = value.ToString();
-
-            //Debug.Log("row2 : " + row["data_no"] + " , id : " + id + row["isSelect"].ToString());
-
-            // 데이터 테이블 업데이트
-            // viewPrepare.prepareTable.AcceptChanges();
-        }
+        // data_no → 행 사전으로 바로 찾는다.
+        // 이전: resultTable.Select("data_no = '..'") 로 클릭마다 전체 행을 검색 (전체선택 시 페이지 행 수 × 전체 행 수)
+        viewExecute.SetRowSelected(id, value);
 
         viewExecute.Check_SelectItem();
     }

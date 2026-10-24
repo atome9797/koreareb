@@ -208,21 +208,43 @@ public class MainManager : MonoBehaviour
         process.ErrorDataReceived += (sender, args) => error.AppendLine(args.Data);
         //process.ErrorDataReceived += AppendErrorToLoadMsg;
 
-
-        process.Start();
-        process.BeginOutputReadLine();
-        process.BeginErrorReadLine();
-
+        // Exited 는 Start 전에 등록한다 (이전: Start 후 등록 → 짧게 끝나는 프로세스면 이벤트를 놓쳐 영원히 대기)
         var processExited = new TaskCompletionSource<bool>();
 
         process.Exited += (sender, args) =>
         {
-            processExited.SetResult(true);
+            processExited.TrySetResult(true);
         };
+
+        try
+        {
+            process.Start();
+        }
+        catch (Exception e)
+        {
+            // 파이썬이 없거나 경로가 틀리면 여기서 실패한다. 호출한 화면의 로딩 팝업이 닫히도록 실패 코드로 돌려준다.
+            UnityEngine.Debug.LogError($"[{fileName} {arguments}] 실행 실패: {e.Message}");
+            process.Dispose();
+            return -1;
+        }
+
+        process.BeginOutputReadLine();
+        process.BeginErrorReadLine();
 
         await processExited.Task;
 
+        // Exited 는 출력 읽기가 끝나기 전에 올 수 있다. 인자 없는 WaitForExit 은 출력/오류 스트림을 끝까지 읽을 때까지 기다린다.
+        // (이미 끝난 프로세스라 금방 돌아오지만 메인 스레드를 막지 않도록 백그라운드에서)
+        await Task.Run(() => process.WaitForExit());
+
         int exitCode = process.ExitCode;
+
+        if (exitCode != 0)
+        {
+            UnityEngine.Debug.LogError($"[{fileName} {arguments}] exit {exitCode}\n{error}");
+        }
+
+        process.Dispose();
 
         return exitCode;
     }
@@ -475,6 +497,12 @@ public class MainManager : MonoBehaviour
     /// <returns></returns>
     public bool CheckingString(string password)
     {
+        // 안내 문구(8~16자)와 달리 길이 검사가 없었다
+        if (string.IsNullOrEmpty(password) || password.Length < 8 || password.Length > 16)
+        {
+            return false;
+        }
+
         bool check = true;
 
         string strAcChar = "-!@#$%^&*()_";

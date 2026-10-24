@@ -53,13 +53,38 @@ public class ViewMapSearch : BaseView
         }        
     }
 
+    // DataTable.Select 의 LIKE 값 이스케이프: ' → '', 와일드카드/대괄호는 [ ] 로 감싼다
+    private static string EscapeLikeValue(string value)
+    {
+        System.Text.StringBuilder sb = new System.Text.StringBuilder(value.Length);
+
+        foreach (char c in value)
+        {
+            if (c == '[' || c == ']' || c == '*' || c == '%')
+            {
+                sb.Append('[').Append(c).Append(']');
+            }
+            else if (c == '\'')
+            {
+                sb.Append("''");
+            }
+            else
+            {
+                sb.Append(c);
+            }
+        }
+
+        return sb.ToString();
+    }
+
     public void SearchMap()
     {
         if(Input_map.text.Trim().Length > 0)
         {
             Debug.Log("SearchMap" + Input_map.text);
 
-            rows = serverManager.ds_map.Tables[0].Select("bjdong_name LIKE '%" + Input_map.text.Trim() + "%'");
+            // 입력값을 DataTable 식 문법에서 글자 그대로 쓰이도록 이스케이프 (이전: ' 나 [ 를 입력하면 예외)
+            rows = serverManager.ds_map.Tables[0].Select("bjdong_name LIKE '%" + EscapeLikeValue(Input_map.text.Trim()) + "%'");
 
             Debug.Log("rows : " + rows.Length);
 

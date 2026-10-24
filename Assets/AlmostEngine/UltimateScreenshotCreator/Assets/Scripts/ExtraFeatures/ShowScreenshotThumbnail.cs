@@ -42,7 +42,7 @@ namespace AlmostEngine.Screenshot.Extra
 
         public IEnumerator ShowCoroutine()
         {
-            m_ScreenshotManager = GameObject.FindObjectOfType<ScreenshotManager>();
+            m_ScreenshotManager = GameObject.FindFirstObjectByType<ScreenshotManager>();
             if (m_ScreenshotManager == null)
                 yield break;
 

@@ -43,7 +43,7 @@ namespace ChartUtil.ChartEditor
 
             if (GUILayout.Button("Update Preview For Active Charts"))
             {
-                Chart[] charts = FindObjectsOfType<Chart>();
+                Chart[] charts = FindObjectsByType<Chart>(FindObjectsSortMode.InstanceID);
                 foreach (Chart chart in charts)
                 {
                     if (chart.gameObject.scene.name == null) continue;
@@ -85,7 +85,7 @@ namespace ChartUtil.ChartEditor
 
             if (GUILayout.Button("Load Preset For Active Charts") && presets.Length > 0)
             {
-                Chart[] charts = FindObjectsOfType<Chart>();
+                Chart[] charts = FindObjectsByType<Chart>(FindObjectsSortMode.InstanceID);
                 ChartOptions[] chartOptions = new ChartOptions[charts.Length];
                 for (int i = 0; i < charts.Length; ++i) chartOptions[i] = charts[i].chartOptions;
                 Undo.RecordObjects(chartOptions, "Load chart presets");

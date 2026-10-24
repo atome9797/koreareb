@@ -170,7 +170,7 @@ public static class ExtUi
         label.fontSize = size;
         label.color = color;
         label.alignment = align;
-        label.enableWordWrapping = false;
+        SetWrap(label, false);
         label.overflowMode = TextOverflowModes.Ellipsis;
         label.raycastTarget = false;
         label.richText = false;              // 지역명·이름 같은 데이터 글자를 태그로 읽지 않는다
@@ -182,10 +182,23 @@ public static class ExtUi
     public static TextMeshProUGUI Paragraph(Transform parent, string text, float size, Color color)
     {
         TextMeshProUGUI label = Label(parent, text, size, color, TextAlignmentOptions.TopLeft);
-        label.enableWordWrapping = true;
+        SetWrap(label, true);
         label.overflowMode = TextOverflowModes.Truncate;
         label.lineSpacing = 6f;
         return label;
+    }
+
+    /// <summary>
+    /// 줄바꿈 켜기·끄기. Unity 6 의 TMP(uGUI 2.0)는 enableWordWrapping 을 쓰지 않고 textWrappingMode 를 쓴다.
+    /// 2021.3 의 TMP 3.0 에는 textWrappingMode 가 없어서 버전으로 나눈다.
+    /// </summary>
+    public static void SetWrap(TMP_Text text, bool wrap)
+    {
+#if UNITY_2023_2_OR_NEWER
+        text.textWrappingMode = wrap ? TextWrappingModes.Normal : TextWrappingModes.NoWrap;
+#else
+        text.enableWordWrapping = wrap;
+#endif
     }
 
     /// <summary>화면 제목 (계정 관리 화면과 같은 위치: 청록 막대 + 22px)</summary>

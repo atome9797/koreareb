@@ -845,7 +845,7 @@ namespace AlmostEngine.Screenshot
                 }
             }
             // If not cameras on the list, get the active camera for display 1 with the higher depth
-            Camera[] cameras = GameObject.FindObjectsOfType<Camera>();
+            Camera[] cameras = GameObject.FindObjectsByType<Camera>(FindObjectsSortMode.InstanceID);
             Camera best = null;
             foreach (Camera cam in cameras)
             {
@@ -879,7 +879,7 @@ namespace AlmostEngine.Screenshot
                 }
             }
             // If not cameras on the list, get the active camera for display 1 with the higher depth
-            Camera[] cameras = GameObject.FindObjectsOfType<Camera>();
+            Camera[] cameras = GameObject.FindObjectsByType<Camera>(FindObjectsSortMode.InstanceID);
             Camera best = null;
             foreach (Camera cam in cameras)
             {
@@ -1104,7 +1104,7 @@ namespace AlmostEngine.Screenshot
             // Force UI culling mask
             if (forceUICullingLayer && m_Cameras.Count > 0 && renderUI == true)
             {
-                disabledUIElements = GameObject.FindObjectsOfType<RectTransform>().Where(r => r.gameObject.activeInHierarchy
+                disabledUIElements = GameObject.FindObjectsByType<RectTransform>(FindObjectsSortMode.InstanceID).Where(r => r.gameObject.activeInHierarchy
                                                                                                 && (r.GetComponentInParent<Canvas>() != null)
                                                                                                 && (m_Cameras.FindAll(ca => (ca.m_CullingMask & (1 << r.gameObject.layer)) != 0).Count == 0)
                                                                                             ).ToList();
@@ -1161,7 +1161,7 @@ namespace AlmostEngine.Screenshot
             List<ScreenshotOverlay> sceneUIOverlaysCanvas = new List<ScreenshotOverlay>();
 
             // Find all canvas using screenspaceoverlay on the scene
-            Canvas[] canvas = GameObject.FindObjectsOfType<Canvas>();
+            Canvas[] canvas = GameObject.FindObjectsByType<Canvas>(FindObjectsSortMode.InstanceID);
             foreach (Canvas canva in canvas)
             {
                 if (canva.gameObject.activeInHierarchy == true
@@ -1236,7 +1236,7 @@ namespace AlmostEngine.Screenshot
         List<ScreenshotCamera> FindAllOtherCameras(List<ScreenshotCamera> cameras)
         {
             List<ScreenshotCamera> cams = new List<ScreenshotCamera>();
-            Camera[] sceneCameras = GameObject.FindObjectsOfType<Camera>();
+            Camera[] sceneCameras = GameObject.FindObjectsByType<Camera>(FindObjectsSortMode.InstanceID);
             foreach (Camera camera in sceneCameras)
             {
                 bool contains = false;

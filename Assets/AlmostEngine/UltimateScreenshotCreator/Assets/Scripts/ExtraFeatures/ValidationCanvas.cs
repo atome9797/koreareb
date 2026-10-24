@@ -22,7 +22,7 @@ namespace AlmostEngine.Screenshot.Extra
 		public void Capture ()
 		{
 			if (m_ScreenshotManager == null) {
-				m_ScreenshotManager = GameObject.FindObjectOfType<ScreenshotManager> ();
+				m_ScreenshotManager = GameObject.FindFirstObjectByType<ScreenshotManager>();
 			}
 
 			// Start listening to end capture event

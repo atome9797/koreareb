@@ -7,7 +7,7 @@ public class CursorEvent : MonoBehaviour, IPointerEnterHandler, IPointerExitHand
 
     private void Awake()
     {
-        cursorControl = FindObjectOfType<CursorControl>();
+        cursorControl = FindFirstObjectByType<CursorControl>();
     }
 
     public void OnPointerEnter(PointerEventData eventData)

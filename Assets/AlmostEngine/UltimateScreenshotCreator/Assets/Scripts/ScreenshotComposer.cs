@@ -34,7 +34,7 @@ namespace AlmostEngine.Screenshot
                                                      bool forceUICulling = false,
                                                      bool disableHDRPFX = true)
         {
-            m_ScreenshotTaker = GameObject.FindObjectOfType<ScreenshotTaker>();
+            m_ScreenshotTaker = GameObject.FindFirstObjectByType<ScreenshotTaker>();
 
             // Capture all inner textures
             foreach (RawImage texture in m_Textures)

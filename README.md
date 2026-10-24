@@ -445,6 +445,8 @@ erDiagram
 ## 실행 환경
 
 - Windows, Unity 2021.3.20f1
+- Unity 6.3 LTS(6000.3.27f1)로 옮기는 중입니다 ([#18](https://github.com/atome9797/koreareb/issues/18)). 준비 작업은 2021.3 에서도 그대로 컴파일됩니다. 6.3 으로 열 때는 TMP 리소스 업그레이드 창을 수락하세요 (안 뜨면 Window › TextMeshPro › Import TMP Essential Resources). 한 번 6.3 으로 저장하면 2021.3 으로 되돌릴 수 없습니다.
+- 코드 편집기 연동은 Visual Studio Editor 패키지 하나로 Visual Studio 와 VS Code 를 함께 지원합니다.
 - Python 3 + `pandas`, `numpy`, `scikit-learn`, `xgboost`
 - 작업 폴더 `C:\korea_rebs` 에 `korea_rebs/` 의 스크립트와 학습 자료 `dataframe_train.csv` 를 둡니다. 앱이 이 폴더에서 `python` 을 실행합니다.
 - 처음 실행하면 콘솔에 `[DB] migration 1 applied`, `[DB] migration 2 applied` 가 찍힙니다. 이때 에디터에서는 저장소의 `koreareb.db` 파일이 바뀌니 커밋하지 마세요.

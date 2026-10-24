@@ -57,7 +57,16 @@ public class GnbViewControl : MonoBehaviour
     public Color menus_onColor;
     public Color menus_offColor;
 
+    // 다른 메뉴 화면으로 바뀔 때 (확장 화면 시장분석·일본점검이 닫히려고 듣는다. Extension/ExtensionBootstrap.cs)
+    public event System.Action MenuChanging;
 
+    private void RaiseMenuChanging()
+    {
+        if (MenuChanging != null)
+        {
+            MenuChanging();
+        }
+    }
 
     public void Start()
     {
@@ -74,6 +83,9 @@ public class GnbViewControl : MonoBehaviour
 
         // 배경 클릭
         btn_background.onClick.AddListener(Click_Background);
+
+        // 확장 메뉴 (시장분석, 일본점검)
+        ExtensionBootstrap.Attach(this);
     }
 
     // 배경 클릭
@@ -95,7 +107,8 @@ public class GnbViewControl : MonoBehaviour
             {
                 if (lastNum != setNum)
                 {
-                    if (lastNum < 3)
+                    // 이전: lastNum < 3 → 계정관리·확장 메뉴 화면을 보던 중이면 강조가 다른 버튼에 남았다
+                    if (lastNum < menuButtons.Length)
                     {
                         unLoad_Menu();
 
@@ -138,7 +151,7 @@ public class GnbViewControl : MonoBehaviour
             {
                 if (lastNum != setNum)
                 {
-                    if (lastNum < 3)
+                    if (lastNum < menuButtons.Length)
                     {
                         unLoad_Menu();
 
@@ -333,6 +346,8 @@ public class GnbViewControl : MonoBehaviour
 
                     viewMain.viewMyInfo.Close();
 
+                    RaiseMenuChanging();
+
                     UI_DashBoard.Open();
 
                     UI_DashBoard.Init();
@@ -353,6 +368,8 @@ public class GnbViewControl : MonoBehaviour
         else
         {
             viewMain.viewMyInfo.Close();
+
+            RaiseMenuChanging();
 
             UI_DashBoard.Open();
 
@@ -433,6 +450,8 @@ public class GnbViewControl : MonoBehaviour
     // 주택청약
     public void SelectMenu_01(int selectNum)
     {
+        RaiseMenuChanging();
+
         unLoad_Menu_01();
 
         UI_Menu01[selectNum].SetActive(true);
@@ -458,6 +477,8 @@ public class GnbViewControl : MonoBehaviour
     // 통계
     public void SelectMenu_02(int selectNum)
     {
+        RaiseMenuChanging();
+
         unLoad_Menu_02();
         UI_Menu02[selectNum].SetActive(true);
 
@@ -473,6 +494,8 @@ public class GnbViewControl : MonoBehaviour
     // 이력관리
     public void SelectMenu_03(int selectNum)
     {
+        RaiseMenuChanging();
+
         unLoad_Menu_03();
         UI_Menu03[selectNum].SetActive(true);
 
@@ -488,6 +511,8 @@ public class GnbViewControl : MonoBehaviour
     // 계정 관리
     public void SelectMenu_04(int selectNum)
     {
+        RaiseMenuChanging();
+
         unLoad_Menu_04();
         UI_Menu04.SetActive(true);
 

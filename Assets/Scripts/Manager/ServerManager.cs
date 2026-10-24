@@ -19,7 +19,7 @@ using UnityEngine;
 /// - 조회 실패 시 로그를 남기고 빈 테이블을 돌려준다(로딩 팝업이 영원히 떠 있지 않도록).
 ///   쓰기 실패는 예외를 그대로 올려 호출한 화면이 알 수 있게 한다.
 /// </summary>
-public class ServerManager : MonoBehaviour
+public partial class ServerManager : MonoBehaviour
 {
     public string m_DatabaseFileName = "koreareb.db";
     public DatabaseAccess m_DatabaseAccess;

@@ -1,0 +1,982 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>한·일 부동산 지역 분석</title>
+<!--
+  koreareb 확장: 한·일 부동산 지역 분석 대시보드 (외부 라이브러리·인터넷 없이 열린다)
+  데이터: data/market-data.js  ← python market_data.py analyze && python market_data.py export
+  없으면 data/sample-data.js (합성 예시 데이터)를 보여 주고 '예시 데이터'라고 표시한다.
+-->
+<style>
+  :root {
+    color-scheme: light;
+    --page: #f9f9f7;
+    --surface: #fcfcfb;
+    --ink: #0b0b0b;
+    --ink-2: #52514e;
+    --muted: #898781;
+    --grid: #e1e0d9;
+    --axis: #c3c2b7;
+    --border: rgba(11, 11, 11, 0.10);
+    --s1: #2a78d6;  /* 한국, 한 계열 막대 */
+    --s2: #eb6834;  /* 일본 */
+    --s3: #1baf7a;
+    --s4: #eda100;
+    --wash: rgba(42, 120, 214, 0.10);
+    --warn: #fab219;
+    --hover: rgba(11, 11, 11, 0.05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) {
+      color-scheme: dark;
+      --page: #0d0d0d;
+      --surface: #1a1a19;
+      --ink: #f0efec;
+      --ink-2: #c3c2b7;
+      --muted: #898781;
+      --grid: #2c2c2a;
+      --axis: #383835;
+      --border: rgba(255, 255, 255, 0.10);
+      --s1: #3987e5;
+      --s2: #d95926;
+      --s3: #199e70;
+      --s4: #c98500;
+      --wash: rgba(57, 135, 229, 0.14);
+      --hover: rgba(255, 255, 255, 0.06);
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --border: rgba(255, 255, 255, 0.10);
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --wash: rgba(57, 135, 229, 0.14);
+    --hover: rgba(255, 255, 255, 0.06);
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body {
+    margin: 0; background: var(--page); color: var(--ink);
+    font: 14px/1.5 system-ui, -apple-system, "Segoe UI", "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR",
+          "Yu Gothic UI", "Meiryo", sans-serif;
+  }
+  main { max-width: 1180px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 24px; margin: 0 0 4px; font-weight: 650; }
+  h2 { font-size: 16px; margin: 0; font-weight: 650; }
+  .sub { color: var(--ink-2); margin: 0; }
+  .note { color: var(--muted); font-size: 12px; margin: 6px 0 0; }
+  .banner {
+    margin: 16px 0 0; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--surface); display: flex; gap: 10px; align-items: flex-start;
+  }
+  .banner .icon {
+    flex: none; width: 20px; height: 20px; border-radius: 50%; background: var(--warn); color: #0b0b0b;
+    font-weight: 700; font-size: 13px; display: grid; place-items: center; margin-top: 1px;
+  }
+  .filters { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; margin: 20px 0 16px; }
+  .filters label { color: var(--ink-2); font-size: 13px; margin-right: 6px; }
+  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--surface); }
+  .seg button {
+    border: 0; background: none; color: var(--ink-2); padding: 6px 12px; font: inherit; cursor: pointer;
+  }
+  .seg button + button { border-left: 1px solid var(--border); }
+  .seg button[aria-pressed="true"] { color: var(--ink); background: var(--hover); font-weight: 650; }
+  .seg button:focus-visible, .chip:focus-visible, .linkbtn:focus-visible { outline: 2px solid var(--s1); outline-offset: -2px; }
+  select {
+    font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 6px 10px;
+  }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .tile { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+  .tile .label { color: var(--ink-2); font-size: 13px; }
+  .tile .value { font-size: 26px; font-weight: 650; margin-top: 2px; }
+  .tile .extra { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; min-width: 0; }
+  .card.wide { grid-column: 1 / -1; }
+  .card header { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 8px; }
+  .card .desc { color: var(--ink-2); font-size: 13px; margin: 2px 0 10px; }
+  .linkbtn { border: 0; background: none; color: var(--s1); font: inherit; font-size: 13px; cursor: pointer; padding: 2px 0; white-space: nowrap; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
+  .chip {
+    border: 1px solid var(--border); background: none; color: var(--ink-2); border-radius: 999px; padding: 3px 10px;
+    font: inherit; font-size: 12px; cursor: pointer;
+  }
+  .chip[aria-pressed="true"] { color: var(--ink); background: var(--hover); font-weight: 650; }
+  .chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .chart text { fill: var(--ink-2); font-size: 12px; }
+  .chart .tick { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .chart .val { fill: var(--ink); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .chart .grid line { stroke: var(--grid); stroke-width: 1; }
+  .chart .base { stroke: var(--axis); stroke-width: 1; }
+  .chart .hit { fill: transparent; cursor: default; }
+  .chart .mark, .chart text { pointer-events: none; }   /* 막대·점 위에서도 hit 영역이 포인터를 받는다 */
+  .chart .hit:hover + .mark, .chart .hit:focus + .mark { opacity: 0.8; }
+  .chart .hit:focus { outline: none; }
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; color: var(--ink-2); font-size: 12px; margin: 0 0 6px; }
+  .legend i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 6px; }
+  .legend i.dot { width: 9px; height: 9px; border-radius: 50%; }
+  .empty { color: var(--muted); padding: 28px 0; text-align: center; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--grid); }
+  th { color: var(--ink-2); font-weight: 600; white-space: nowrap; }
+  td:first-child { white-space: nowrap; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .tablewrap { overflow-x: auto; max-height: 420px; overflow-y: auto; }
+  #tooltip {
+    position: fixed; pointer-events: none; z-index: 10; background: var(--surface); color: var(--ink);
+    border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font-size: 12px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12); max-width: 280px; display: none;
+  }
+  #tooltip .tv { font-weight: 650; font-size: 13px; }
+  #tooltip .tr { display: flex; gap: 8px; align-items: center; color: var(--ink-2); }
+  #tooltip .tr i { width: 12px; height: 2px; border-radius: 2px; flex: none; }
+  footer { margin-top: 28px; color: var(--ink-2); font-size: 12px; }
+  footer h3 { font-size: 13px; color: var(--ink); margin: 16px 0 4px; }
+  footer ul { margin: 0; padding-left: 18px; }
+  @media (max-width: 820px) { .grid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>한·일 부동산 지역 분석</h1>
+  <p class="sub" id="coverage">데이터를 읽는 중…</p>
+  <div class="banner" id="sampleBanner" hidden>
+    <span class="icon" aria-hidden="true">!</span>
+    <div><strong>예시 데이터입니다.</strong> 화면을 미리 보려고 만든 합성 숫자이며 실제 시세·경쟁률이 아닙니다.
+      실제 데이터는 앱의 <em>시장분석 › 데이터 수집</em> 탭에서 받거나 <code>python market_data.py export</code> 로 만듭니다.</div>
+  </div>
+
+  <div class="filters" id="filters">
+    <span><label>나라</label><span class="seg" id="fCountry"></span></span>
+    <span><label for="fPeriod">기간</label><select id="fPeriod"></select></span>
+    <span><label>지역 단위</label><span class="seg" id="fLevel"></span></span>
+  </div>
+
+  <section class="kpis" id="kpis" aria-label="요약"></section>
+
+  <div class="grid">
+    <section class="card" id="cardComp">
+      <header><h2>청약·추첨이 몰린 지역</h2><button class="linkbtn" data-table="comp">표로 보기</button></header>
+      <p class="desc" id="compDesc"></p>
+      <div class="chips" id="schemeChips"></div>
+      <div class="chart" id="compChart"></div>
+      <div class="tablewrap" id="compTable" hidden></div>
+    </section>
+
+    <section class="card" id="cardPrice">
+      <header><h2 id="priceTitle">가격이 낮은 지역</h2><button class="linkbtn" data-table="price">표로 보기</button></header>
+      <p class="desc" id="priceDesc"></p>
+      <div class="chips" id="orderChips"></div>
+      <div class="chart" id="priceChart"></div>
+      <div class="tablewrap" id="priceTable" hidden></div>
+    </section>
+
+    <section class="card wide" id="cardScatter">
+      <header><h2>경쟁률과 가격 수준</h2><button class="linkbtn" data-table="scatter">표로 보기</button></header>
+      <p class="desc">점 하나가 지역 하나입니다. 왼쪽 위(전국보다 가격 지수가 낮은데 경쟁률은 높은 곳)가 수요 대비 가격이 낮은 지역입니다.</p>
+      <div class="chart" id="scatterChart"></div>
+      <div class="tablewrap" id="scatterTable" hidden></div>
+    </section>
+
+    <section class="card wide" id="cardTrend">
+      <header><h2>㎡당 가격 추이 (분기)</h2><button class="linkbtn" data-table="trend">표로 보기</button></header>
+      <p class="desc">전국과 고른 시도·都道府県의 분기별 ㎡당 중앙값입니다. 최대 3곳까지 고릅니다.</p>
+      <div class="chips" id="trendChips"></div>
+      <div class="legend" id="trendLegend"></div>
+      <div class="chart" id="trendChart"></div>
+      <div class="tablewrap" id="trendTable" hidden></div>
+    </section>
+
+    <section class="card wide" id="cardCompare">
+      <header><h2>한국과 일본 비교</h2><button class="linkbtn" data-table="compare">표로 보기</button></header>
+      <p class="desc" id="compareDesc"></p>
+      <div class="legend"><span><i class="dot" style="background:var(--s1)"></i>한국 시군구</span><span><i class="dot" style="background:var(--s2)"></i>일본 市区町村</span></div>
+      <div class="chart" id="compareChart"></div>
+      <div class="tablewrap" id="compareTable" hidden></div>
+    </section>
+
+    <section class="card wide" id="cardProjects">
+      <header><h2>경쟁률 높은 단지·주택 (최근 4개 분기)</h2></header>
+      <div class="chips" id="projectChips"></div>
+      <div class="tablewrap" id="projectTable"></div>
+    </section>
+  </div>
+
+  <footer>
+    <h3>출처</h3>
+    <ul>
+      <li>한국 실거래: 국토교통부 아파트 매매 실거래가 상세 자료 (공공데이터포털). 해제 거래는 뺍니다.</li>
+      <li>한국 청약: 한국부동산원 청약홈 분양정보·청약접수 경쟁률 (공공데이터포털)</li>
+      <li>일본 거래: 国土交通省 不動産情報ライブラリ 不動産価格（取引価格・成約価格）情報</li>
+      <li>일본 공영주택·신축 맨션 경쟁률: 공개 자료를 옮긴 CSV (korea_rebs/templates)</li>
+    </ul>
+    <h3>정의</h3>
+    <ul>
+      <li>경쟁률 = 신청 건수 ÷ 공급(모집·판매) 호수. 한국은 1순위 접수 기준.</li>
+      <li>가격 지수 = 지역 ㎡당 중앙값 ÷ 같은 나라·기간 전국 ㎡당 중앙값 × 100. 통화와 상관없이 한·일을 비교합니다.</li>
+      <li>거래 10건 미만 지역과 공급 20호 미만 지역은 순위에서 뺍니다 (표에는 남습니다).</li>
+      <li>한국은 아파트, 일본은 中古マンション等(맨션) 거래만 씁니다.</li>
+    </ul>
+  </footer>
+</main>
+<div id="tooltip" role="status" aria-live="polite"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  var MIN_TRADES = 10;
+  var MIN_SUPPLY = 20;
+  var SCHEMES = {
+    KR: [['kr_apt', '아파트 청약']],
+    JP: [['jp_public_housing', '공영주택 추첨'], ['jp_new_condo', '신축 맨션 추첨']]
+  };
+  var COUNTRY_NAME = { KR: '한국', JP: '일본' };
+  var KR_SHORT = { '서울특별시': '서울', '부산광역시': '부산', '대구광역시': '대구', '인천광역시': '인천', '광주광역시': '광주',
+    '대전광역시': '대전', '울산광역시': '울산', '세종특별자치시': '세종', '경기도': '경기', '강원특별자치도': '강원',
+    '충청북도': '충북', '충청남도': '충남', '전북특별자치도': '전북', '전라남도': '전남', '경상북도': '경북',
+    '경상남도': '경남', '제주특별자치도': '제주' };
+
+  var D, rows, byKey = {}, regionsMap;
+  var state = { country: 'KR', period: 'LAST4Q', level: 2, scheme: { KR: 'kr_apt', JP: 'jp_public_housing' },
+                order: 'asc', trend: { KR: null, JP: null }, projectScheme: 'kr_apt' };
+  var tableOpen = {};
+
+  // ------------------------------------------------------------------ 데이터 읽기
+  function loadScript(src) {
+    return new Promise(function (resolve, reject) {
+      var s = document.createElement('script');
+      s.src = src;
+      s.onload = function () { resolve(src); };
+      s.onerror = function () { s.remove(); reject(new Error(src)); };
+      document.head.appendChild(s);
+    });
+  }
+
+  loadScript('data/market-data.js')
+    .catch(function () { return loadScript('data/sample-data.js'); })
+    .then(function () { init(window.KOREAREB_MARKET); })
+    .catch(function () {
+      document.getElementById('coverage').textContent =
+        '데이터 파일이 없습니다. python market_data.py analyze 후 python market_data.py export 를 실행하세요.';
+    });
+
+  function init(data) {
+    D = data;
+    regionsMap = D.regions || {};
+    var cols = D.stat_columns;
+    rows = D.stats.map(function (r) {
+      var o = {};
+      for (var i = 0; i < cols.length; i++) o[cols[i]] = r[i];
+      return o;
+    });
+    rows.forEach(function (r) {
+      var key = [r.country, r.metric, r.category, r.level, r.period].join('|');
+      (byKey[key] = byKey[key] || []).push(r);
+    });
+    document.getElementById('sampleBanner').hidden = !D.meta.sample;
+    if (!countriesWithData().length) {
+      document.getElementById('coverage').textContent = '집계된 데이터가 없습니다. 먼저 데이터를 받은 뒤 집계(analyze)를 실행하세요.';
+      return;
+    }
+    if (countriesWithData().indexOf(state.country) < 0) state.country = countriesWithData()[0];
+    renderCoverage();
+    buildFilters();
+    document.querySelectorAll('[data-table]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var name = btn.getAttribute('data-table');
+        tableOpen[name] = !tableOpen[name];
+        btn.textContent = tableOpen[name] ? '차트로 보기' : '표로 보기';
+        render();
+      });
+    });
+    var timer;
+    window.addEventListener('resize', function () { clearTimeout(timer); timer = setTimeout(render, 120); });
+    render();
+  }
+
+  function countriesWithData() {
+    return ['KR', 'JP'].filter(function (c) {
+      return rows.some(function (r) { return r.country === c; });
+    });
+  }
+
+  function get(country, metric, category, level, period) {
+    return byKey[[country, metric, category, level, period].join('|')] || [];
+  }
+
+  function periodsFor(country) {
+    var seen = {};
+    rows.forEach(function (r) {
+      if (r.country === country && r.level === 0 && r.period.indexOf('Q') < 0) seen[r.period] = true;
+    });
+    if (rows.some(function (r) { return r.country === country && r.period === 'LAST4Q'; })) seen.LAST4Q = true;
+    var years = Object.keys(seen).filter(function (p) { return /^\d{4}$/.test(p); }).sort().reverse();
+    return ['LAST4Q', 'ALL'].filter(function (p) { return seen[p]; }).concat(years);
+  }
+
+  function periodLabel(p) {
+    if (p === 'LAST4Q') return '최근 4개 분기';
+    if (p === 'ALL') return '받은 전체 기간';
+    return p + '년';
+  }
+
+  // ------------------------------------------------------------------ 이름·숫자
+  function region(country, code) {
+    var r = regionsMap[country + ':' + code];
+    return r ? { level: r[0], parent: r[1], ko: r[2], local: r[3], en: r[4] } : null;
+  }
+
+  function regionName(country, code, short) {
+    if (code === '00') return '전국';
+    var r = region(country, code);
+    if (!r) return code;
+    if (country === 'KR') {
+      var name = r.ko || r.local || code;
+      if (!short) return name;
+      var parts = name.split(' ');
+      if (parts.length > 1 && KR_SHORT[parts[0]]) return KR_SHORT[parts[0]] + ' ' + parts.slice(1).join(' ');
+      return KR_SHORT[name] || name;
+    }
+    var own = r.ko || r.local || r.en || code;
+    if (r.level === 1 || !short) return own;
+    var pref = region('JP', r.parent);
+    var prefName = pref ? (pref.ko || pref.local) : '';
+    return prefName ? own + ' (' + shortPref(prefName) + ')' : own;
+  }
+
+  function shortPref(name) {
+    // 도쿄도 → 도쿄, 오사카부 → 오사카, 가나가와현 → 가나가와 (홋카이도는 그대로)
+    return name === '홋카이도' ? name : name.replace(/(도|부|현)$/, '');
+  }
+
+  function fmtInt(v) { return v == null ? '-' : Math.round(v).toLocaleString('ko-KR'); }
+
+  function fmtUnit(country, v) {
+    if (v == null) return '-';
+    if (country === 'KR') return Math.round(v / 10000).toLocaleString('ko-KR') + '만 원';
+    return (v / 10000).toLocaleString('ko-KR', { maximumFractionDigits: 1 }) + '만 엔';
+  }
+
+  function fmtPrice(country, v) {
+    if (v == null) return '-';
+    if (country === 'KR') {
+      return v >= 1e8 ? (v / 1e8).toLocaleString('ko-KR', { maximumFractionDigits: 2 }) + '억 원'
+                      : Math.round(v / 1e4).toLocaleString('ko-KR') + '만 원';
+    }
+    return (v / 1e4).toLocaleString('ko-KR', { maximumFractionDigits: 0 }) + '만 엔';
+  }
+
+  function fmtRate(v) { return v == null ? '-' : v.toLocaleString('ko-KR', { maximumFractionDigits: 1 }) + ' 대 1'; }
+
+  function compact(v, country) {
+    if (country === 'KR') return Math.round(v / 10000).toLocaleString('ko-KR') + '만';
+    return (v / 10000).toLocaleString('ko-KR', { maximumFractionDigits: 0 }) + '만';
+  }
+
+  function el(tag, attrs, text) {
+    var e = document.createElement(tag);
+    if (attrs) Object.keys(attrs).forEach(function (k) { e.setAttribute(k, attrs[k]); });
+    if (text != null) e.textContent = text;
+    return e;
+  }
+
+  var SVGNS = 'http://www.w3.org/2000/svg';
+  function svg(tag, attrs, text) {
+    var e = document.createElementNS(SVGNS, tag);
+    if (attrs) Object.keys(attrs).forEach(function (k) { e.setAttribute(k, attrs[k]); });
+    if (text != null) e.textContent = text;
+    return e;
+  }
+
+  // ------------------------------------------------------------------ 필터
+  function buildFilters() {
+    var seg = document.getElementById('fCountry');
+    seg.textContent = '';
+    countriesWithData().forEach(function (c) {
+      var b = el('button', { type: 'button', 'aria-pressed': String(state.country === c) }, COUNTRY_NAME[c]);
+      b.addEventListener('click', function () {
+        state.country = c;
+        state.projectScheme = SCHEMES[c][0][0];
+        buildFilters();
+        render();
+      });
+      seg.appendChild(b);
+    });
+
+    var select = document.getElementById('fPeriod');
+    var periods = periodsFor(state.country);
+    if (periods.indexOf(state.period) < 0) state.period = periods[0] || 'ALL';
+    select.textContent = '';
+    periods.forEach(function (p) {
+      var o = el('option', { value: p }, periodLabel(p));
+      if (p === state.period) o.selected = true;
+      select.appendChild(o);
+    });
+    select.onchange = function () { state.period = select.value; render(); };
+
+    var lev = document.getElementById('fLevel');
+    lev.textContent = '';
+    [[1, state.country === 'KR' ? '시도' : '都道府県'], [2, state.country === 'KR' ? '시군구' : '市区町村']].forEach(function (item) {
+      var b = el('button', { type: 'button', 'aria-pressed': String(state.level === item[0]) }, item[1]);
+      b.addEventListener('click', function () { state.level = item[0]; buildFilters(); render(); });
+      lev.appendChild(b);
+    });
+  }
+
+  function chips(containerId, items, current, onPick, multi) {
+    var box = document.getElementById(containerId);
+    box.textContent = '';
+    items.forEach(function (item) {
+      var pressed = multi ? current.indexOf(item[0]) >= 0 : current === item[0];
+      var b = el('button', { type: 'button', class: 'chip', 'aria-pressed': String(pressed) }, item[1]);
+      b.addEventListener('click', function () { onPick(item[0]); });
+      box.appendChild(b);
+    });
+    box.hidden = items.length < 2 && !multi;
+  }
+
+  // ------------------------------------------------------------------ 그리기
+  function render() {
+    hideTip();
+    renderKpis();
+    renderComp();
+    renderPrice();
+    renderScatter();
+    renderTrend();
+    renderCompare();
+    renderProjects();
+  }
+
+  function renderCoverage() {
+    var parts = [];
+    var cov = D.meta.coverage || {};
+    function q(k) { return Math.floor(k / 10) + 'Q' + (k % 10); }
+    if (cov['trade:KR:apartment']) parts.push('한국 아파트 실거래 ' + q(cov['trade:KR:apartment'].from) + '–' + q(cov['trade:KR:apartment'].to));
+    if (cov['trade:JP:apartment']) parts.push('일본 맨션 거래 ' + q(cov['trade:JP:apartment'].from) + '–' + q(cov['trade:JP:apartment'].to));
+    Object.keys(cov).forEach(function (k) {
+      if (k.indexOf('competition:') === 0) {
+        var bits = k.split(':');
+        var label = (SCHEMES[bits[1]] || []).filter(function (s) { return s[0] === bits[2]; })[0];
+        if (label) parts.push(COUNTRY_NAME[bits[1]] + ' ' + label[1] + ' ' + cov[k].from.slice(0, 7) + '–' + cov[k].to.slice(0, 7));
+      }
+    });
+    parts.push('집계 ' + D.meta.built_at.slice(0, 10));
+    document.getElementById('coverage').textContent = parts.join(' · ');
+  }
+
+  function tile(label, value, extra) {
+    var t = el('div', { class: 'tile' });
+    t.appendChild(el('div', { class: 'label' }, label));
+    t.appendChild(el('div', { class: 'value' }, value));
+    if (extra) t.appendChild(el('div', { class: 'extra' }, extra));
+    return t;
+  }
+
+  function renderKpis() {
+    var box = document.getElementById('kpis');
+    box.textContent = '';
+    var c = state.country;
+    var nat = get(c, 'trade', 'apartment', 0, state.period)[0];
+    if (nat) {
+      box.appendChild(tile('전국 ㎡당 중앙 거래가', fmtUnit(c, nat.median_unit_price),
+        '사분위 ' + fmtUnit(c, nat.p25_unit_price) + ' ~ ' + fmtUnit(c, nat.p75_unit_price)));
+      box.appendChild(tile('거래 수', fmtInt(nat.n_records) + '건', '중앙 거래가 ' + fmtPrice(c, nat.median_price) +
+        ' · 면적 ' + (nat.median_area_m2 == null ? '-' : nat.median_area_m2.toFixed(1) + '㎡')));
+    }
+    SCHEMES[c].forEach(function (s) {
+      var r = get(c, 'competition', s[0], 0, state.period)[0];
+      if (r) box.appendChild(tile(s[1] + ' 경쟁률', fmtRate(r.competition_rate),
+        '공급 ' + fmtInt(r.supply_units) + ' · 신청 ' + fmtInt(r.applications)));
+    });
+    if (!box.children.length) box.appendChild(tile('데이터 없음', '-', periodLabel(state.period) + '에 집계된 값이 없습니다'));
+  }
+
+  function renderComp() {
+    var c = state.country;
+    var scheme = state.scheme[c];
+    chips('schemeChips', SCHEMES[c], scheme, function (s) { state.scheme[c] = s; render(); });
+    var all = get(c, 'competition', scheme, state.level, state.period);
+    var ranked = all.filter(function (r) { return r.supply_units >= MIN_SUPPLY && r.competition_rate != null; })
+                    .sort(function (a, b) { return b.competition_rate - a.competition_rate; });
+    var label = SCHEMES[c].filter(function (s) { return s[0] === scheme; })[0][1];
+    document.getElementById('compDesc').textContent = label + ' 경쟁률 상위 ' + Math.min(15, ranked.length) +
+      '곳 (' + periodLabel(state.period) + ', 공급 ' + MIN_SUPPLY + '호 이상).';
+    var items = ranked.slice(0, 15).map(function (r) {
+      return { label: regionName(c, r.region_code, true), value: r.competition_rate, text: fmtRate(r.competition_rate),
+               tip: [['경쟁률', fmtRate(r.competition_rate)], ['공급', fmtInt(r.supply_units)], ['신청', fmtInt(r.applications)],
+                     ['공고·모집 수', fmtInt(r.n_records)]], name: regionName(c, r.region_code, false) };
+    });
+    showChartOrTable('comp', items.length ? function (box) { barChart(box, items); } : null, function () {
+      return table(['지역', '공급', '신청', '경쟁률', '공고·모집 수'], all.slice().sort(function (a, b) {
+        return (b.competition_rate || 0) - (a.competition_rate || 0);
+      }).map(function (r) {
+        return [regionName(c, r.region_code, false), fmtInt(r.supply_units), fmtInt(r.applications), fmtRate(r.competition_rate), fmtInt(r.n_records)];
+      }), [1, 2, 3, 4]);
+    }, '이 기간·지역 단위에는 경쟁률 데이터가 없습니다.');
+  }
+
+  function renderPrice() {
+    var c = state.country;
+    chips('orderChips', [['asc', '저렴한 순'], ['desc', '비싼 순']], state.order, function (o) { state.order = o; render(); });
+    document.getElementById('priceTitle').textContent = state.order === 'asc' ? '가격이 낮은 지역' : '가격이 높은 지역';
+    var all = get(c, 'trade', 'apartment', state.level, state.period);
+    var ranked = all.filter(function (r) { return r.n_records >= MIN_TRADES && r.median_unit_price != null; })
+                    .sort(function (a, b) { return state.order === 'asc' ? a.median_unit_price - b.median_unit_price
+                                                                          : b.median_unit_price - a.median_unit_price; });
+    document.getElementById('priceDesc').textContent = '㎡당 중앙 거래가 ' + (state.order === 'asc' ? '하위' : '상위') + ' ' +
+      Math.min(15, ranked.length) + '곳 (' + periodLabel(state.period) + ', 거래 ' + MIN_TRADES + '건 이상).';
+    var items = ranked.slice(0, 15).map(function (r) {
+      return { label: regionName(c, r.region_code, true), value: r.median_unit_price, text: fmtUnit(c, r.median_unit_price),
+               tip: [['㎡당 중앙값', fmtUnit(c, r.median_unit_price)], ['가격 지수', r.price_index == null ? '-' : r.price_index.toFixed(1)],
+                     ['거래 수', fmtInt(r.n_records) + '건'], ['중앙 거래가', fmtPrice(c, r.median_price)]],
+               name: regionName(c, r.region_code, false) };
+    });
+    showChartOrTable('price', items.length ? function (box) { barChart(box, items); } : null, function () {
+      return table(['지역', '거래 수', '㎡당 중앙값', '사분위(25~75%)', '가격 지수', '중앙 거래가'], all.slice().sort(function (a, b) {
+        return (a.median_unit_price || 0) - (b.median_unit_price || 0);
+      }).map(function (r) {
+        return [regionName(c, r.region_code, false), fmtInt(r.n_records), fmtUnit(c, r.median_unit_price),
+                fmtUnit(c, r.p25_unit_price) + ' ~ ' + fmtUnit(c, r.p75_unit_price),
+                r.price_index == null ? '-' : r.price_index.toFixed(1), fmtPrice(c, r.median_price)];
+      }), [1, 2, 4, 5]);
+    }, '이 기간·지역 단위에는 거래 데이터가 없습니다.');
+  }
+
+  function joined(c) {
+    var scheme = state.scheme[c];
+    var comps = {};
+    get(c, 'competition', scheme, state.level, state.period).forEach(function (r) { comps[r.region_code] = r; });
+    var nat = get(c, 'competition', scheme, 0, state.period)[0];
+    var points = get(c, 'trade', 'apartment', state.level, state.period).filter(function (t) {
+      var k = comps[t.region_code];
+      return t.n_records >= MIN_TRADES && t.price_index != null && k && k.supply_units >= MIN_SUPPLY && k.competition_rate > 0;
+    }).map(function (t) {
+      var k = comps[t.region_code];
+      return { code: t.region_code, x: t.price_index, y: k.competition_rate, trade: t, comp: k,
+               label: regionName(c, t.region_code, true), name: regionName(c, t.region_code, false) };
+    });
+    return { points: points, natRate: nat ? nat.competition_rate : null };
+  }
+
+  function renderScatter() {
+    var c = state.country;
+    var j = joined(c);
+    var schemeLabel = SCHEMES[c].filter(function (s) { return s[0] === state.scheme[c]; })[0][1];
+    showChartOrTable('scatter', j.points.length >= 3 ? function (box) { scatterChart(box, j.points, j.natRate, c, schemeLabel); } : null, function () {
+      return table(['지역', '가격 지수', '㎡당 중앙값', schemeLabel + ' 경쟁률', '공급'], j.points.sort(function (a, b) { return a.x - b.x; }).map(function (p) {
+        return [p.name, p.x.toFixed(1), fmtUnit(c, p.trade.median_unit_price), fmtRate(p.y), fmtInt(p.comp.supply_units)];
+      }), [1, 2, 3, 4]);
+    }, '거래와 경쟁률이 함께 있는 지역이 3곳 미만입니다. 가격과 경쟁률 데이터를 같은 지역 단위로 받으세요.');
+  }
+
+  function renderTrend() {
+    var c = state.country;
+    var prefRows = rows.filter(function (r) { return r.country === c && r.metric === 'trade' && r.category === 'apartment' && r.level === 1 && r.period === 'ALL'; })
+                       .sort(function (a, b) { return b.n_records - a.n_records; });
+    if (state.trend[c] == null) state.trend[c] = prefRows.slice(0, 2).map(function (r) { return r.region_code; });
+    var picked = state.trend[c];
+    chips('trendChips', prefRows.slice(0, 12).map(function (r) { return [r.region_code, regionName(c, r.region_code, true)]; }), picked, function (code) {
+      var i = picked.indexOf(code);
+      if (i >= 0) picked.splice(i, 1); else if (picked.length < 3) picked.push(code);
+      render();
+    }, true);
+
+    var quarters = {};
+    rows.forEach(function (r) {
+      if (r.country === c && r.metric === 'trade' && r.category === 'apartment' && /^\d{4}Q\d$/.test(r.period)) quarters[r.period] = true;
+    });
+    var xs = Object.keys(quarters).sort();
+    var series = [{ code: '00', name: '전국', color: 'var(--s1)' }].concat(picked.map(function (code, i) {
+      return { code: code, name: regionName(c, code, true), color: ['var(--s2)', 'var(--s3)', 'var(--s4)'][i] };
+    }));
+    series.forEach(function (s) {
+      var level = s.code === '00' ? 0 : 1;
+      s.values = xs.map(function (p) {
+        var r = get(c, 'trade', 'apartment', level, p).filter(function (x) { return x.region_code === s.code; })[0];
+        return r && r.n_records >= MIN_TRADES ? r.median_unit_price : null;
+      });
+    });
+    var legend = document.getElementById('trendLegend');
+    legend.textContent = '';
+    series.forEach(function (s) {
+      var span = el('span');
+      var key = el('i');
+      key.style.background = s.color;
+      span.appendChild(key);
+      span.appendChild(document.createTextNode(s.name));
+      legend.appendChild(span);
+    });
+    showChartOrTable('trend', xs.length >= 2 ? function (box) { lineChart(box, xs, series, c); } : null, function () {
+      return table(['분기'].concat(series.map(function (s) { return s.name; })), xs.map(function (p, i) {
+        return [p].concat(series.map(function (s) { return fmtUnit(c, s.values[i]); }));
+      }), series.map(function (_, i) { return i + 1; }));
+    }, '분기가 2개 이상 있어야 추이를 그립니다.');
+  }
+
+  function renderCompare() {
+    var groups = ['KR', 'JP'].map(function (c) {
+      var period = state.period;
+      if (!get(c, 'trade', 'apartment', 0, period).length) period = periodsFor(c)[0];
+      var items = get(c, 'trade', 'apartment', 2, period).filter(function (r) { return r.n_records >= MIN_TRADES && r.price_index != null; });
+      return { country: c, period: period, items: items, nat: get(c, 'trade', 'apartment', 0, period)[0] };
+    }).filter(function (g) { return g.items.length; });
+    var fx = D.meta.fx_krw_per_jpy;
+    var desc = '각 나라의 시군구·市区町村 가격 지수(전국 ㎡당 중앙값 = 100) 분포입니다. 통화가 달라도 지역 사이 격차를 비교할 수 있습니다.';
+    if (fx && groups.length === 2) {
+      var kr = groups[0].nat, jp = groups[1].nat;
+      desc += ' 전국 ㎡당 중앙값: 한국 ' + fmtUnit('KR', kr.median_unit_price) + ', 일본 ' + fmtUnit('JP', jp.median_unit_price) +
+              ' (약 ' + Math.round(jp.median_unit_price * fx / 10000).toLocaleString('ko-KR') + '만 원, 1엔 = ' + fx + '원).';
+    }
+    document.getElementById('compareDesc').textContent = desc;
+    showChartOrTable('compare', groups.length ? function (box) { stripChart(box, groups); } : null, function () {
+      var out = [];
+      groups.forEach(function (g) {
+        var sorted = g.items.slice().sort(function (a, b) { return a.price_index - b.price_index; });
+        var spread = sorted.length ? (sorted[sorted.length - 1].price_index / sorted[0].price_index) : null;
+        out.push([COUNTRY_NAME[g.country], periodLabel(g.period), fmtInt(sorted.length),
+                  sorted.length ? regionName(g.country, sorted[0].region_code, false) + ' ' + sorted[0].price_index.toFixed(1) : '-',
+                  sorted.length ? regionName(g.country, sorted[sorted.length - 1].region_code, false) + ' ' + sorted[sorted.length - 1].price_index.toFixed(1) : '-',
+                  spread ? spread.toFixed(1) + '배' : '-']);
+      });
+      return table(['나라', '기간', '지역 수', '가장 낮은 곳', '가장 높은 곳', '최고 ÷ 최저'], out, [2, 5]);
+    }, '시군구·市区町村 단위 거래 데이터가 없습니다.');
+  }
+
+  function renderProjects() {
+    var c = state.country;
+    if (!SCHEMES[c].some(function (s) { return s[0] === state.projectScheme; })) state.projectScheme = SCHEMES[c][0][0];
+    chips('projectChips', SCHEMES[c], state.projectScheme, function (s) { state.projectScheme = s; render(); });
+    var list = (D.top_projects || []).filter(function (p) { return p.country === c && p.scheme === state.projectScheme; }).slice(0, 30);
+    var box = document.getElementById('projectTable');
+    box.textContent = '';
+    if (!list.length) { box.appendChild(el('div', { class: 'empty' }, '공급 10호 이상인 단지·주택이 없습니다.')); return; }
+    box.appendChild(table(['단지·주택', '지역', '공고·모집', '공급', '신청', '경쟁률'], list.map(function (p) {
+      return [p.name || '-', regionName(c, p.region || p.pref || '', c === 'JP'), (p.date || '').slice(0, 10), fmtInt(p.supply), fmtInt(p.applications), fmtRate(p.rate)];
+    }), [3, 4, 5]));
+  }
+
+  function showChartOrTable(name, drawChart, makeTable, emptyText) {
+    var chart = document.getElementById(name + 'Chart');
+    var tableBox = document.getElementById(name + 'Table');
+    chart.textContent = '';
+    tableBox.textContent = '';
+    var open = !!tableOpen[name];
+    chart.hidden = open;
+    tableBox.hidden = !open;
+    if (open) { tableBox.appendChild(makeTable()); return; }
+    if (!drawChart) { chart.appendChild(el('div', { class: 'empty' }, emptyText)); return; }
+    drawChart(chart);
+  }
+
+  function table(headers, data, numericCols) {
+    var t = el('table');
+    var tr = el('tr');
+    headers.forEach(function (h, i) { tr.appendChild(el('th', numericCols.indexOf(i) >= 0 ? { class: 'num', scope: 'col' } : { scope: 'col' }, h)); });
+    var thead = el('thead');
+    thead.appendChild(tr);
+    t.appendChild(thead);
+    var tbody = el('tbody');
+    data.forEach(function (row) {
+      var r = el('tr');
+      row.forEach(function (v, i) { r.appendChild(el('td', numericCols.indexOf(i) >= 0 ? { class: 'num' } : null, v)); });
+      tbody.appendChild(r);
+    });
+    t.appendChild(tbody);
+    return t;
+  }
+
+  // ------------------------------------------------------------------ 툴팁
+  var tip = document.getElementById('tooltip');
+
+  function showTip(evt, title, lines, color) {
+    tip.textContent = '';
+    var head = el('div', { class: 'tv' }, lines.length ? lines[0][1] : '');
+    tip.appendChild(head);
+    var name = el('div', { class: 'tr' });
+    if (color) { var key = el('i'); key.style.background = color; name.appendChild(key); }
+    name.appendChild(document.createTextNode(title));
+    tip.appendChild(name);
+    lines.slice(1).forEach(function (l) { tip.appendChild(el('div', { class: 'tr' }, l[0] + ' ' + l[1])); });
+    tip.style.display = 'block';
+    var x, y;
+    if (evt.clientX != null && evt.type.indexOf('pointer') === 0) { x = evt.clientX; y = evt.clientY; }
+    else { var b = evt.target.getBoundingClientRect(); x = b.left + b.width / 2; y = b.top; }
+    var w = tip.offsetWidth, h = tip.offsetHeight;
+    tip.style.left = Math.max(8, Math.min(window.innerWidth - w - 8, x + 14)) + 'px';
+    tip.style.top = Math.max(8, Math.min(window.innerHeight - h - 8, y - h - 10)) + 'px';
+  }
+
+  function hideTip() { tip.style.display = 'none'; }
+
+  function bindTip(node, title, lines, color) {
+    node.setAttribute('tabindex', '0');
+    node.setAttribute('aria-label', title + ' ' + lines.map(function (l) { return l[0] + ' ' + l[1]; }).join(', '));
+    node.addEventListener('pointermove', function (e) { showTip(e, title, lines, color); });
+    node.addEventListener('pointerleave', hideTip);
+    node.addEventListener('focus', function (e) { showTip(e, title, lines, color); });
+    node.addEventListener('blur', hideTip);
+  }
+
+  // ------------------------------------------------------------------ 차트: 가로 막대
+  function measure(texts, size) {
+    var c = measure.canvas || (measure.canvas = document.createElement('canvas'));
+    var ctx = c.getContext('2d');
+    ctx.font = size + 'px ' + getComputedStyle(document.body).fontFamily;
+    return texts.reduce(function (m, t) { return Math.max(m, ctx.measureText(t).width); }, 0);
+  }
+
+  function barChart(box, items) {
+    var width = Math.max(320, box.clientWidth);
+    var labelW = Math.min(width * 0.38, measure(items.map(function (i) { return i.label; }), 12) + 12);
+    var valueW = measure(items.map(function (i) { return i.text; }), 12) + 10;
+    var row = 26, bar = 14, top = 4;
+    var plotW = Math.max(60, width - labelW - valueW - 4);
+    var max = items.reduce(function (m, i) { return Math.max(m, i.value); }, 0) || 1;
+    var height = top + items.length * row + 4;
+    var s = svg('svg', { viewBox: '0 0 ' + width + ' ' + height, role: 'img', 'aria-label': '막대 차트' });
+    s.appendChild(svg('line', { class: 'base', x1: labelW, x2: labelW, y1: 0, y2: height }));
+    items.forEach(function (item, i) {
+      var y = top + i * row;
+      var w = Math.max(2, item.value / max * plotW);
+      var g = svg('g');
+      var label = svg('text', { x: labelW - 8, y: y + row / 2 + 4, 'text-anchor': 'end' }, fit(item.label, labelW - 10));
+      g.appendChild(label);
+      var hit = svg('rect', { class: 'hit', x: 0, y: y, width: width, height: row });
+      var mark = svg('path', { class: 'mark', d: barPath(labelW, y + (row - bar) / 2, w, bar), fill: 'var(--s1)' });
+      g.appendChild(hit);
+      g.appendChild(mark);
+      g.appendChild(svg('text', { class: 'val', x: labelW + w + 6, y: y + row / 2 + 4 }, item.text));
+      bindTip(hit, item.name, item.tip, 'var(--s1)');
+      s.appendChild(g);
+    });
+    box.appendChild(s);
+  }
+
+  function barPath(x, y, w, h) {
+    var r = Math.min(4, w / 2, h / 2);
+    // 기준선 쪽은 각지고 끝은 둥글게
+    return 'M' + x + ',' + y + 'H' + (x + w - r) + 'Q' + (x + w) + ',' + y + ' ' + (x + w) + ',' + (y + r) +
+           'V' + (y + h - r) + 'Q' + (x + w) + ',' + (y + h) + ' ' + (x + w - r) + ',' + (y + h) + 'H' + x + 'Z';
+  }
+
+  function fit(text, maxW) {
+    if (measure([text], 12) <= maxW) return text;
+    var t = text;
+    while (t.length > 1 && measure([t + '…'], 12) > maxW) t = t.slice(0, -1);
+    return t + '…';
+  }
+
+  // ------------------------------------------------------------------ 차트: 산점도
+  function niceTicks(min, max, count) {
+    var span = max - min || 1;
+    var step = Math.pow(10, Math.floor(Math.log10(span / count)));
+    var err = span / count / step;
+    if (err >= 7.5) step *= 10; else if (err >= 3.5) step *= 5; else if (err >= 1.5) step *= 2;
+    var ticks = [];
+    for (var v = Math.ceil(min / step) * step; v <= max + step * 1e-9; v += step) ticks.push(+v.toFixed(10));
+    return ticks;
+  }
+
+  function scatterChart(box, points, natRate, country, schemeLabel) {
+    var width = Math.max(320, box.clientWidth);
+    var height = Math.round(Math.min(420, Math.max(280, width * 0.42)));
+    var m = { l: 56, r: 16, t: 12, b: 40 };
+    var xs = points.map(function (p) { return p.x; }), ys = points.map(function (p) { return p.y; });
+    var xMin = Math.min(100, Math.min.apply(null, xs)) * 0.9, xMax = Math.max(100, Math.max.apply(null, xs)) * 1.05;
+    var yMin = Math.max(0.05, Math.min.apply(null, ys) * 0.8), yMax = Math.max.apply(null, ys) * 1.25;
+    var lx = function (v) { return m.l + (v - xMin) / (xMax - xMin) * (width - m.l - m.r); };
+    var ly = function (v) { return height - m.b - (Math.log(v) - Math.log(yMin)) / (Math.log(yMax) - Math.log(yMin)) * (height - m.t - m.b); };
+    var s = svg('svg', { viewBox: '0 0 ' + width + ' ' + height, role: 'img', 'aria-label': '산점도: 가격 지수와 경쟁률' });
+    var grid = svg('g', { class: 'grid' });
+    niceTicks(xMin, xMax, 6).forEach(function (t) {
+      grid.appendChild(svg('line', { x1: lx(t), x2: lx(t), y1: m.t, y2: height - m.b }));
+      s.appendChild(svg('text', { class: 'tick', x: lx(t), y: height - m.b + 16, 'text-anchor': 'middle' }, String(t)));
+    });
+    logTicks(yMin, yMax).forEach(function (t) {
+      grid.appendChild(svg('line', { x1: m.l, x2: width - m.r, y1: ly(t), y2: ly(t) }));
+      s.appendChild(svg('text', { class: 'tick', x: m.l - 6, y: ly(t) + 4, 'text-anchor': 'end' }, String(t)));
+    });
+    s.insertBefore(grid, s.firstChild);
+    s.appendChild(svg('text', { x: (m.l + width - m.r) / 2, y: height - 6, 'text-anchor': 'middle' }, '가격 지수 (전국 = 100) →'));
+    s.appendChild(svg('text', { x: 12, y: (m.t + height - m.b) / 2, transform: 'rotate(-90 12 ' + (m.t + height - m.b) / 2 + ')', 'text-anchor': 'middle' },
+                      schemeLabel + ' 경쟁률 (로그) →'));
+    s.appendChild(svg('line', { class: 'base', x1: lx(100), x2: lx(100), y1: m.t, y2: height - m.b }));
+    if (natRate) {
+      s.appendChild(svg('line', { class: 'base', x1: m.l, x2: width - m.r, y1: ly(natRate), y2: ly(natRate) }));
+      s.appendChild(svg('text', { class: 'tick', x: width - m.r, y: ly(natRate) - 6, 'text-anchor': 'end' }, '전국 경쟁률 ' + fmtRate(natRate)));
+    }
+    s.appendChild(svg('text', { class: 'tick', x: m.l + 6, y: m.t + 14 }, '가격 낮고 경쟁 높음'));
+    // 왼쪽 위 사분면에서 경쟁률 ÷ 가격 지수가 큰 4곳만 이름을 단다
+    var labelled = points.filter(function (p) { return p.x < 100 && (!natRate || p.y > natRate); })
+                         .sort(function (a, b) { return b.y / b.x - a.y / a.x; }).slice(0, 4);
+    points.forEach(function (p) {
+      var g = svg('g');
+      var hit = svg('circle', { class: 'hit', cx: lx(p.x), cy: ly(p.y), r: 12 });
+      var dot = svg('circle', { class: 'mark', cx: lx(p.x), cy: ly(p.y), r: 4.5, fill: 'var(--s1)', stroke: 'var(--surface)', 'stroke-width': 2 });
+      g.appendChild(hit);
+      g.appendChild(dot);
+      bindTip(hit, p.name, [['경쟁률', fmtRate(p.y)], ['가격 지수', p.x.toFixed(1)], ['㎡당 중앙값', fmtUnit(country, p.trade.median_unit_price)],
+                            ['공급', fmtInt(p.comp.supply_units)], ['거래 수', fmtInt(p.trade.n_records) + '건']], 'var(--s1)');
+      s.appendChild(g);
+    });
+    labelled.forEach(function (p) {
+      s.appendChild(svg('text', { class: 'val', x: lx(p.x) + 8, y: ly(p.y) - 8 }, p.label));
+    });
+    box.appendChild(s);
+  }
+
+  function logTicks(min, max) {
+    var out = [];
+    [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000].forEach(function (v) { if (v >= min && v <= max) out.push(v); });
+    return out;
+  }
+
+  // ------------------------------------------------------------------ 차트: 선
+  function lineChart(box, xs, series, country) {
+    var width = Math.max(320, box.clientWidth);
+    var height = 300;
+    var endW = measure(series.map(function (s) { return s.name; }), 12) + 14;
+    var m = { l: 56, r: Math.min(140, endW), t: 10, b: 28 };
+    var all = [];
+    series.forEach(function (s) { s.values.forEach(function (v) { if (v != null) all.push(v); }); });
+    if (!all.length) { box.appendChild(el('div', { class: 'empty' }, '거래 10건 이상인 분기가 없습니다.')); return; }
+    var yMin = Math.min.apply(null, all) * 0.9, yMax = Math.max.apply(null, all) * 1.05;
+    var ticks = niceTicks(yMin, yMax, 5);
+    yMin = Math.min(yMin, ticks[0]);
+    yMax = Math.max(yMax, ticks[ticks.length - 1]);
+    var lx = function (i) { return m.l + (xs.length === 1 ? 0 : i / (xs.length - 1) * (width - m.l - m.r)); };
+    var ly = function (v) { return height - m.b - (v - yMin) / (yMax - yMin) * (height - m.t - m.b); };
+    var s = svg('svg', { viewBox: '0 0 ' + width + ' ' + height, role: 'img', 'aria-label': '선 차트: 분기별 ㎡당 가격' });
+    var grid = svg('g', { class: 'grid' });
+    ticks.forEach(function (t) {
+      grid.appendChild(svg('line', { x1: m.l, x2: width - m.r, y1: ly(t), y2: ly(t) }));
+      s.appendChild(svg('text', { class: 'tick', x: m.l - 6, y: ly(t) + 4, 'text-anchor': 'end' }, compact(t, country)));
+    });
+    s.appendChild(grid);
+    var every = Math.ceil(xs.length / Math.max(2, Math.floor((width - m.l - m.r) / 64)));
+    xs.forEach(function (p, i) {
+      if (i % every === 0 || i === xs.length - 1) s.appendChild(svg('text', { class: 'tick', x: lx(i), y: height - 8, 'text-anchor': 'middle' }, p));
+    });
+    series.forEach(function (ser) {
+      var d = '', pen = false, last = null;
+      ser.values.forEach(function (v, i) {
+        if (v == null) { pen = false; return; }
+        d += (pen ? 'L' : 'M') + lx(i).toFixed(1) + ',' + ly(v).toFixed(1);
+        pen = true;
+        last = i;
+      });
+      s.appendChild(svg('path', { d: d, fill: 'none', stroke: ser.color, 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }));
+      if (last != null) {
+        s.appendChild(svg('circle', { cx: lx(last), cy: ly(ser.values[last]), r: 4, fill: ser.color, stroke: 'var(--surface)', 'stroke-width': 2 }));
+        ser.endY = ly(ser.values[last]);
+      }
+    });
+    // 끝 이름표: 겹치면 붙이지 않고 범례에 맡긴다
+    var placed = [];
+    series.slice().sort(function (a, b) { return (a.endY || 0) - (b.endY || 0); }).forEach(function (ser) {
+      if (ser.endY == null) return;
+      if (placed.some(function (y) { return Math.abs(y - ser.endY) < 14; })) return;
+      placed.push(ser.endY);
+      s.appendChild(svg('text', { x: width - m.r + 8, y: ser.endY + 4 }, ser.name));
+    });
+    // 십자선 + 툴팁 (가장 가까운 분기)
+    var cross = svg('line', { x1: 0, x2: 0, y1: m.t, y2: height - m.b, stroke: 'var(--axis)', 'stroke-width': 1, visibility: 'hidden' });
+    s.appendChild(cross);
+    var overlay = svg('rect', { x: m.l, y: m.t, width: Math.max(1, width - m.l - m.r), height: height - m.t - m.b, fill: 'transparent', tabindex: '0',
+                                'aria-label': '분기를 고르려면 화살표 키를 누르세요' });
+    var focusIndex = xs.length - 1;
+    function show(i, evt) {
+      var x = lx(i);
+      cross.setAttribute('x1', x);
+      cross.setAttribute('x2', x);
+      cross.setAttribute('visibility', 'visible');
+      tip.textContent = '';
+      tip.appendChild(el('div', { class: 'tr' }, xs[i]));
+      series.forEach(function (ser) {
+        var row = el('div', { class: 'tr' });
+        var key = el('i');
+        key.style.background = ser.color;
+        row.appendChild(key);
+        var strong = el('span', { class: 'tv' }, fmtUnit(country, ser.values[i]));
+        row.appendChild(strong);
+        row.appendChild(document.createTextNode(ser.name));
+        tip.appendChild(row);
+      });
+      tip.style.display = 'block';
+      var rect = s.getBoundingClientRect();
+      var px = evt && evt.clientX != null ? evt.clientX : rect.left + x * rect.width / width;
+      var py = evt && evt.clientY != null ? evt.clientY : rect.top + 20;
+      tip.style.left = Math.max(8, Math.min(window.innerWidth - tip.offsetWidth - 8, px + 14)) + 'px';
+      tip.style.top = Math.max(8, py - tip.offsetHeight - 10) + 'px';
+    }
+    overlay.addEventListener('pointermove', function (e) {
+      var rect = s.getBoundingClientRect();
+      var x = (e.clientX - rect.left) * width / rect.width;
+      var i = Math.round((x - m.l) / Math.max(1, (width - m.l - m.r)) * (xs.length - 1));
+      focusIndex = Math.max(0, Math.min(xs.length - 1, i));
+      show(focusIndex, e);
+    });
+    overlay.addEventListener('pointerleave', function () { cross.setAttribute('visibility', 'hidden'); hideTip(); });
+    overlay.addEventListener('focus', function () { show(focusIndex); });
+    overlay.addEventListener('blur', function () { cross.setAttribute('visibility', 'hidden'); hideTip(); });
+    overlay.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        focusIndex = Math.max(0, Math.min(xs.length - 1, focusIndex + (e.key === 'ArrowLeft' ? -1 : 1)));
+        show(focusIndex);
+        e.preventDefault();
+      }
+    });
+    s.appendChild(overlay);
+    box.appendChild(s);
+  }
+
+  // ------------------------------------------------------------------ 차트: 점 띠 (한·일 가격 지수 분포)
+  function stripChart(box, groups) {
+    var width = Math.max(320, box.clientWidth);
+    var rowH = 56;
+    var m = { l: 64, r: 16, t: 8, b: 30 };
+    var height = m.t + groups.length * rowH + m.b;
+    var all = [];
+    groups.forEach(function (g) { g.items.forEach(function (r) { all.push(r.price_index); }); });
+    var xMin = 0, xMax = Math.max(120, Math.max.apply(null, all) * 1.05);
+    var lx = function (v) { return m.l + (v - xMin) / (xMax - xMin) * (width - m.l - m.r); };
+    var s = svg('svg', { viewBox: '0 0 ' + width + ' ' + height, role: 'img', 'aria-label': '한국과 일본 지역 가격 지수 분포' });
+    var grid = svg('g', { class: 'grid' });
+    niceTicks(xMin, xMax, 6).forEach(function (t) {
+      grid.appendChild(svg('line', { x1: lx(t), x2: lx(t), y1: m.t, y2: height - m.b }));
+      s.appendChild(svg('text', { class: 'tick', x: lx(t), y: height - m.b + 16, 'text-anchor': 'middle' }, String(t)));
+    });
+    s.appendChild(grid);
+    s.appendChild(svg('line', { class: 'base', x1: lx(100), x2: lx(100), y1: m.t, y2: height - m.b }));
+    s.appendChild(svg('text', { class: 'tick', x: lx(100) + 4, y: m.t + 10 }, '전국 = 100'));
+    groups.forEach(function (g, gi) {
+      var cy = m.t + gi * rowH + rowH / 2;
+      var color = g.country === 'KR' ? 'var(--s1)' : 'var(--s2)';
+      s.appendChild(svg('text', { x: m.l - 10, y: cy + 4, 'text-anchor': 'end' }, COUNTRY_NAME[g.country]));
+      var sorted = g.items.slice().sort(function (a, b) { return a.price_index - b.price_index; });
+      sorted.forEach(function (r, i) {
+        var jitter = ((i * 7) % 5 - 2) * 5;          // 겹침을 줄이는 고정 흔들기 (매번 같다)
+        var cx = lx(r.price_index), y = cy + jitter;
+        var gg = svg('g');
+        var hit = svg('circle', { class: 'hit', cx: cx, cy: y, r: 9 });
+        gg.appendChild(hit);
+        gg.appendChild(svg('circle', { class: 'mark', cx: cx, cy: y, r: 4, fill: color, stroke: 'var(--surface)', 'stroke-width': 2 }));
+        bindTip(hit, regionName(g.country, r.region_code, false), [['가격 지수', r.price_index.toFixed(1)],
+          ['㎡당 중앙값', fmtUnit(g.country, r.median_unit_price)], ['거래 수', fmtInt(r.n_records) + '건'], ['기간', periodLabel(g.period)]], color);
+        s.appendChild(gg);
+      });
+      if (sorted.length) {
+        var lo = sorted[0], hi = sorted[sorted.length - 1];
+        s.appendChild(svg('text', { class: 'val', x: lx(lo.price_index), y: cy + 24, 'text-anchor': 'start' }, regionName(g.country, lo.region_code, true)));
+        s.appendChild(svg('text', { class: 'val', x: lx(hi.price_index), y: cy - 14, 'text-anchor': 'end' }, regionName(g.country, hi.region_code, true)));
+      }
+    });
+    box.appendChild(s);
+  }
+})();
+</script>
+</body>
+</html>

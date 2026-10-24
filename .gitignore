@@ -80,3 +80,6 @@ crashlytics-build.properties
 
 # Python
 __pycache__/
+
+# 시장분석: market_data.py export 가 만드는 실제 자료 (저장소에는 예시 sample-data.js 만 둔다)
+korea_rebs/dashboard/data/market-data.js

@@ -1,0 +1,1358 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- page:start -->
+<title>koreareb 시스템 맵</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: 머리글 → 보기 탭 → [설계판(점 격자 캔버스) | 옆 패널] 두 칸, 좁은 화면에서는 한 칸으로 쌓는다. */
+:root {
+  --bg: #eef2f4;
+  --surface: #ffffff;
+  --board: #f7f9fa;
+  --grid: #d3dce1;
+  --ink: #15202a;
+  --muted: #56636e;
+  --line: #c4ced5;
+  --flow-line: #8794a0;
+  --lane: #e9eef1;
+  --accent: #1c5d78;
+  --accent-ink: #ffffff;
+  --focus: #2f7cf6;
+  --hl: #fff0a8;
+  --hl-line: #a87b06;
+  --person: #a8326a; --person-soft: #f8e6ef;
+  --b1: #2b62c6; --b1-soft: #e5edfb;
+  --b2: #6f45c2; --b2-soft: #eee8fa;
+  --b3: #0a7a5d; --b3-soft: #e0f2ec;
+  --b4: #b0440e; --b4-soft: #fbebe2;
+  --b5: #7a6216; --b5-soft: #f4eedb;
+  --b6: #5f6b76; --b6-soft: #eceff2;
+  --font-body: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --radius: 12px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0d1418; --surface: #151f26; --board: #111a20; --grid: #24323b; --ink: #e4ebef; --muted: #9aa9b3;
+    --line: #34444f; --flow-line: #6f808c; --lane: #16222a; --accent: #62b4d6; --accent-ink: #08141a; --focus: #75aaff;
+    --hl: #4d4113; --hl-line: #e3c04f; --person: #f07fb0; --person-soft: #3b1d2b;
+    --b1: #7ba6ff; --b1-soft: #1a2a46; --b2: #b49bff; --b2-soft: #2a2245; --b3: #4fcfa6; --b3-soft: #12302a;
+    --b4: #ff9b65; --b4-soft: #3b2418; --b5: #dcc061; --b5-soft: #322b14; --b6: #a2adb7; --b6-soft: #242d34;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0d1418; --surface: #151f26; --board: #111a20; --grid: #24323b; --ink: #e4ebef; --muted: #9aa9b3;
+  --line: #34444f; --flow-line: #6f808c; --lane: #16222a; --accent: #62b4d6; --accent-ink: #08141a; --focus: #75aaff;
+  --hl: #4d4113; --hl-line: #e3c04f; --person: #f07fb0; --person-soft: #3b1d2b;
+  --b1: #7ba6ff; --b1-soft: #1a2a46; --b2: #b49bff; --b2-soft: #2a2245; --b3: #4fcfa6; --b3-soft: #12302a;
+  --b4: #ff9b65; --b4-soft: #3b2418; --b5: #dcc061; --b5-soft: #322b14; --b6: #a2adb7; --b6-soft: #242d34;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+code { font-family: var(--font-mono); font-size: .88em; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+.page {
+  max-width: 1480px;
+  margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 22px 32px;
+  display: grid;
+  gap: 16px;
+}
+
+/* 머리글 */
+.masthead { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 14px 40px; }
+.masthead > div { min-width: 0; max-width: 66ch; }
+.eyebrow { margin: 0 0 4px; font: 500 12px/1.4 var(--font-mono); letter-spacing: .03em; color: var(--muted); }
+h1 { margin: 0; font-size: clamp(24px, 3.1vw, 32px); line-height: 1.2; font-weight: 700; letter-spacing: -0.015em; text-wrap: balance; }
+.lede { margin: 6px 0 0; color: var(--muted); text-wrap: pretty; }
+.facts { display: flex; flex-wrap: wrap; gap: 8px 22px; margin: 0; }
+.facts div { display: grid; gap: 1px; }
+.facts dt { font-size: 12px; color: var(--muted); letter-spacing: .02em; }
+.facts dd { margin: 0; font-size: 18px; font-weight: 600; line-height: 1.3; font-variant-numeric: tabular-nums; }
+
+/* 보기 탭 */
+.tabs { display: flex; gap: 4px; padding: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: 999px; width: max-content; max-width: 100%; overflow-x: auto; }
+.tab { appearance: none; border: 0; background: transparent; color: var(--muted); font: 600 14px var(--font-body); padding: 8px 16px; border-radius: 999px; cursor: pointer; white-space: nowrap; }
+.tab:hover { color: var(--ink); }
+.tab[aria-selected="true"] { background: var(--accent); color: var(--accent-ink); }
+.tab:focus-visible, .btn:focus-visible, .ptab:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible, .crumb:focus-visible, .list-btn:focus-visible {
+  outline: 2px solid var(--focus); outline-offset: 2px;
+}
+.view { display: grid; gap: 12px; min-width: 0; }
+
+/* 도구 막대 */
+.toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.search { flex: 1 1 240px; min-width: 0; max-width: 380px; display: flex; }
+.search input { width: 100%; font: 14px var(--font-body); padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); }
+.search input::placeholder { color: var(--muted); }
+.count { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.tool-group { display: flex; flex-wrap: wrap; gap: 6px; margin-left: auto; }
+.btn { appearance: none; font: 500 13.5px var(--font-body); color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 7px 12px; cursor: pointer; }
+.btn:hover { border-color: var(--accent); color: var(--accent); }
+.btn.icon { width: 36px; padding: 6px 0; font-size: 17px; line-height: 1.2; }
+
+/* 설계판 + 옆 패널 */
+.workspace { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 14px; align-items: start; }
+.board {
+  position: relative;
+  min-width: 0;
+  background-color: var(--board);
+  background-image: radial-gradient(var(--grid) 1px, transparent 1.3px);
+  background-size: 22px 22px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+#map-board { height: clamp(420px, calc(100vh - 300px), 780px); }
+#map-svg { width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; user-select: none; -webkit-user-select: none; }
+#map-svg.dragging { cursor: grabbing; }
+.hint { position: absolute; left: 12px; bottom: 10px; right: 12px; margin: 0; font-size: 12px; color: var(--muted); pointer-events: none; }
+.hint span { background: var(--board); padding: 2px 6px; border-radius: 6px; }
+.hint .touch { display: none; }
+@media (hover: none) and (pointer: coarse) {
+  .hint .mouse { display: none; }
+  .hint .touch { display: inline; }
+}
+
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 18px 18px; min-width: 0; display: grid; gap: 10px; align-content: start; }
+#map-panel { height: clamp(420px, calc(100vh - 300px), 780px); overflow: auto; }
+#flow-panel { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 12px); max-height: calc(100vh - 24px); overflow: auto; }
+.pbody { display: grid; gap: 10px; align-content: start; min-width: 0; }
+.panel h2 { margin: 0; font-size: 19px; line-height: 1.35; text-wrap: balance; }
+.panel h3 { margin: 6px 0 0; font-size: 12px; font-weight: 600; letter-spacing: .05em; color: var(--muted); }
+.desc { margin: 0; text-wrap: pretty; }
+.desc.empty { color: var(--muted); font-size: 14px; }
+.panel-eyebrow { margin: 0; font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 4px; font-size: 12.5px; color: var(--muted); }
+.crumb { appearance: none; border: 0; background: none; color: var(--accent); font: inherit; padding: 0; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.meta { margin: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; padding: 2px 10px 2px 8px; border-radius: 999px; background: var(--cs, var(--b6-soft)); color: var(--c, var(--ink)); }
+.chip::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--c, var(--muted)); }
+.chip.planned { --c: var(--muted); --cs: transparent; border: 1px dashed var(--line); }
+ul.files, ul.kids, ol.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; }
+ul.files { gap: 5px; }
+ul.files code { display: inline-block; max-width: 100%; font-size: 12.5px; background: var(--board); border: 1px solid var(--line); border-radius: 6px; padding: 2px 7px; overflow-wrap: anywhere; }
+.list-btn { width: 100%; text-align: left; display: flex; align-items: center; gap: 9px; appearance: none; border: 1px solid transparent; background: none; color: var(--ink); font: 14px/1.4 var(--font-body); padding: 5px 8px; border-radius: 8px; cursor: pointer; }
+.list-btn:hover { background: var(--board); border-color: var(--line); }
+.list-btn.current { background: var(--board); border-color: var(--accent); }
+.list-btn.planned { color: var(--muted); }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--c); flex: none; }
+.step-no { flex: none; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font: 600 11px var(--font-body); color: var(--surface); background: var(--c); font-variant-numeric: tabular-nums; }
+.step-lane { margin-left: auto; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.links-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.links-row .list-btn { width: auto; border-color: var(--line); padding: 3px 9px; font-size: 13px; }
+.steps-title { margin-top: 10px !important; }
+
+/* 패널 탭 / 편집기 */
+.ptabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); margin: -2px 0 2px; }
+.ptab { appearance: none; background: none; border: 0; border-bottom: 2px solid transparent; font: 600 13.5px var(--font-body); color: var(--muted); padding: 6px 10px 8px; cursor: pointer; }
+.ptab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+.help { margin: 0; font-size: 13.5px; color: var(--muted); }
+.syntax { margin: 0; padding: 8px 10px; background: var(--board); border: 1px solid var(--line); border-radius: 8px; overflow-x: auto; font: 12px/1.6 var(--font-mono); color: var(--ink); }
+#outline-editor { width: 100%; min-height: 300px; resize: vertical; font: 12.5px/1.6 var(--font-mono); color: var(--ink); background: var(--board); border: 1px solid var(--line); border-radius: 8px; padding: 10px; tab-size: 2; white-space: pre; overflow: auto; }
+#copy-fallback { width: 100%; min-height: 120px; font: 12px/1.5 var(--font-mono); color: var(--ink); background: var(--board); border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
+.status { margin: 0; font-size: 13px; color: var(--muted); }
+.status.warn { color: var(--b4); }
+.row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.depth { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+.depth select { font: 13px var(--font-body); color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 5px 6px; }
+
+/* 범례 / 바닥글 */
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; color: var(--muted); align-items: center; }
+.legend .item { display: inline-flex; align-items: center; gap: 7px; }
+.legend .swatch { width: 18px; border-top: 3px solid var(--c); border-radius: 2px; }
+.legend .swatch.dashed { border-top: 2px dashed var(--muted); }
+.legend .box-swatch { width: 14px; height: 14px; border-radius: 4px; border: 1.5px solid var(--c); background: var(--surface); }
+.foot { font-size: 13px; color: var(--muted); }
+.foot p { margin: 0; max-width: 90ch; }
+
+/* 마인드맵 노드 (SVG) */
+.node { cursor: pointer; }
+.node:focus { outline: none; }
+.node .box { fill: var(--surface); stroke: var(--c); stroke-opacity: .55; stroke-width: 1.2; }
+.node.d1 .box { fill: var(--cs); stroke-opacity: 1; stroke-width: 1.6; }
+.node.d0 .box { fill: var(--accent); stroke: none; }
+.node .label { fill: var(--ink); font: 500 13.5px var(--font-body); }
+.node.d1 .label { font-weight: 600; font-size: 15px; }
+.node.d0 .label { fill: var(--accent-ink); font-weight: 700; font-size: 17px; }
+.node.planned .box { stroke-dasharray: 4 3; stroke-opacity: 1; fill: var(--board); }
+.node.planned .label { fill: var(--muted); }
+.node .ring { fill: none; stroke: var(--focus); stroke-width: 2; opacity: 0; }
+.node.selected .ring { opacity: .85; }
+.node:focus-visible .ring { opacity: 1; stroke-width: 3; }
+.node.match .box { fill: var(--hl); stroke: var(--hl-line); stroke-opacity: 1; }
+.node:hover .box { stroke-opacity: 1; }
+.link { fill: none; stroke-linecap: round; }
+.link.planned { stroke-dasharray: 5 5; }
+.dim { opacity: .22; }
+.toggle { cursor: pointer; }
+.toggle .hit { fill: transparent; }
+.toggle .t { fill: var(--surface); stroke: var(--c); stroke-width: 1.5; }
+.toggle text { fill: var(--c); font: 700 11px var(--font-body); }
+.toggle.closed .t { fill: var(--c); }
+.toggle.closed text { fill: var(--surface); }
+.toggle:hover .t { stroke-width: 2.4; }
+
+/* 업무 흐름 (SVG) */
+.flow-board { background-image: none; }
+.scroll-x { overflow-x: auto; overflow-y: hidden; }
+#flow-svg { display: block; margin: 0 auto; }
+.lane-bg { fill: var(--lane); opacity: .55; }
+.lane-bg.alt { opacity: .95; }
+.lane-name { fill: var(--ink); font: 600 13px var(--font-body); }
+.lane-sub { fill: var(--muted); font: 11px var(--font-mono); }
+.lane-dot { fill: var(--c); }
+.row-line { stroke: var(--grid); stroke-width: 1; stroke-dasharray: 3 5; }
+.phase { fill: var(--muted); font: 600 12.5px var(--font-body); }
+.fnode { cursor: pointer; }
+.fnode:focus { outline: none; }
+.fnode .box { fill: var(--surface); stroke: var(--c); stroke-width: 1.4; }
+.fnode:hover .box { stroke-width: 2; }
+.fnode .ring { fill: none; stroke: var(--focus); stroke-width: 2; opacity: 0; }
+.fnode.selected .ring { opacity: .85; }
+.fnode:focus-visible .ring { opacity: 1; stroke-width: 3; }
+.fnode .num { fill: var(--c); }
+.fnode .num-t { fill: var(--surface); font: 700 10.5px var(--font-body); }
+.fnode .title { fill: var(--ink); font: 600 13px var(--font-body); }
+.fnode .sub { fill: var(--muted); font: 11px var(--font-mono); }
+.flink { fill: none; stroke: var(--flow-line); stroke-width: 1.6; }
+.flink.dashed { stroke-dasharray: 5 4; }
+.flink.hl { stroke: var(--accent); stroke-width: 2.4; }
+.arrow-head { fill: var(--flow-line); }
+.arrow-head.hl { fill: var(--accent); }
+.flabel rect { fill: var(--board); }
+.flabel text { fill: var(--muted); font: 600 11px var(--font-body); }
+.flabel.hl text { fill: var(--accent); }
+
+@media (max-width: 980px) {
+  .workspace { grid-template-columns: minmax(0, 1fr); }
+  #map-board { height: 62vh; min-height: 380px; }
+  #map-panel { height: auto; min-height: 0; overflow: visible; }
+  #flow-panel { position: static; max-height: none; overflow: visible; }
+  .tool-group { margin-left: 0; }
+}
+@media (max-width: 520px) {
+  #btn-zoom-in, #btn-zoom-out { display: none; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .btn, .tab, .list-btn { transition: border-color .15s, color .15s, background-color .15s; }
+}
+</style>
+<!-- head:end -->
+</head>
+<body>
+<div class="page">
+  <header class="masthead">
+    <div>
+      <p class="eyebrow">atome9797/koreareb · 시스템 설계</p>
+      <h1>koreareb 시스템 맵</h1>
+      <p class="lede">부정청약 관리 프로그램의 화면, 코드, 데이터, 분석 스크립트가 어떻게 이어지는지 보여 주는 지도입니다. 가지를 펼쳐 보고, 개요 편집에서 새 가지를 붙여 설계를 넓혀 가세요.</p>
+    </div>
+    <dl class="facts">
+      <div><dt>화면</dt><dd>13개</dd></div>
+      <div><dt>DB 테이블</dt><dd>7개</dd></div>
+      <div><dt>위험 모델</dt><dd>3종 × 2</dd></div>
+      <div><dt>신청자 1명</dt><dd>175개 컬럼</dd></div>
+    </dl>
+  </header>
+
+  <nav class="tabs" role="tablist" aria-label="보기">
+    <button class="tab" role="tab" id="tab-map" data-view="map" aria-controls="view-map" aria-selected="true" type="button">마인드맵 · 화면과 구조</button>
+    <button class="tab" role="tab" id="tab-flow" data-view="flow" aria-controls="view-flow" aria-selected="false" tabindex="-1" type="button">업무 흐름 · 22단계</button>
+  </nav>
+
+  <section id="view-map" class="view" role="tabpanel" aria-labelledby="tab-map">
+    <div class="toolbar">
+      <div class="search">
+        <label for="map-search" class="sr-only">노드 찾기</label>
+        <input id="map-search" type="search" placeholder="찾기: 로그인, tb_riskdata, Launcher.py" autocomplete="off">
+      </div>
+      <span id="search-count" class="count" aria-live="polite"></span>
+      <div class="tool-group">
+        <button class="btn" id="btn-expand" type="button">전체 펼치기</button>
+        <button class="btn" id="btn-collapse" type="button">2단계까지</button>
+        <button class="btn" id="btn-fit" type="button">화면에 맞추기</button>
+        <button class="btn icon" id="btn-zoom-out" type="button" aria-label="축소">−</button>
+        <button class="btn icon" id="btn-zoom-in" type="button" aria-label="확대">+</button>
+      </div>
+    </div>
+    <div class="workspace">
+      <div class="board" id="map-board">
+        <svg id="map-svg" role="group" aria-label="시스템 마인드맵"><g id="map-viewport"><g id="map-links"></g><g id="map-nodes"></g></g></svg>
+        <p class="hint"><span class="mouse">드래그로 이동 · 휠로 확대·축소 · 숫자 동그라미를 누르면 가지가 펼쳐집니다</span><span class="touch">끌어서 이동 · 두 손가락으로 확대·축소 · 노드를 누르면 펼쳐집니다</span></p>
+      </div>
+      <aside class="panel" id="map-panel" aria-label="노드 설명과 개요 편집">
+        <div class="ptabs" role="tablist" aria-label="옆 패널">
+          <button class="ptab" role="tab" id="ptab-detail" data-panel="detail" aria-selected="true" aria-controls="panel-detail" type="button">설명</button>
+          <button class="ptab" role="tab" id="ptab-edit" data-panel="edit" aria-selected="false" aria-controls="panel-edit" tabindex="-1" type="button">개요 편집</button>
+        </div>
+        <div id="panel-detail" class="pbody" role="tabpanel" aria-labelledby="ptab-detail"></div>
+        <div id="panel-edit" class="pbody" role="tabpanel" aria-labelledby="ptab-edit" hidden>
+          <p class="help">한 줄이 노드 하나입니다. 공백 2칸 들여쓰기로 가지를 만들고, <code>|</code> 뒤에 설명과 파일을 붙입니다. 고치면 바로 지도에 반영됩니다.</p>
+          <pre class="syntax">  - 이름 | 설명 | 파일1, 파일2
+    - 하위 노드
+  - [계획] 아직 없는 기능 | 점선으로 그림</pre>
+          <label for="outline-editor" class="sr-only">지도 개요</label>
+          <textarea id="outline-editor" spellcheck="false" rows="18" autocomplete="off"></textarea>
+          <p id="outline-status" class="status" aria-live="polite"></p>
+          <div class="row">
+            <button class="btn" id="btn-copy-outline" type="button">개요 복사</button>
+            <button class="btn" id="btn-copy-mermaid" type="button">README용 Mermaid 복사</button>
+            <label class="depth" for="mermaid-depth">깊이
+              <select id="mermaid-depth">
+                <option value="2" selected>2단계</option>
+                <option value="3">3단계</option>
+                <option value="99">전체</option>
+              </select>
+            </label>
+          </div>
+          <div class="row">
+            <button class="btn" id="btn-reset-outline" type="button">처음 지도로</button>
+            <button class="btn" id="btn-load-draft" type="button" hidden>저장된 편집본 불러오기</button>
+          </div>
+          <textarea id="copy-fallback" readonly hidden aria-label="복사할 글"></textarea>
+        </div>
+      </aside>
+    </div>
+    <div class="legend" id="map-legend" aria-label="범례"></div>
+  </section>
+
+  <section id="view-flow" class="view" role="tabpanel" aria-labelledby="tab-flow" hidden>
+    <div class="workspace">
+      <div class="board flow-board">
+        <div class="scroll-x"><svg id="flow-svg" role="group" aria-label="업무 흐름도"></svg></div>
+      </div>
+      <aside class="panel" id="flow-panel" aria-label="단계 설명">
+        <div id="flow-detail" class="pbody"></div>
+        <h3 class="steps-title">전체 단계</h3>
+        <ol class="steps" id="flow-steps"></ol>
+      </aside>
+    </div>
+    <div class="legend" id="flow-legend" aria-label="범례"></div>
+  </section>
+
+  <footer class="foot">
+    <p>2026년 10월 코드 기준(성능 개선 PR #1 포함). 지도의 개요는 이 파일 안 <code>&lt;script id="map-outline"&gt;</code> 에 있고, 페이지에서 편집한 내용은 이 브라우저에만 임시로 남습니다. 오래 남길 내용은 개요를 복사해 이 파일에 붙여 넣으세요.</p>
+  </footer>
+</div>
+
+<script type="text/plain" id="map-outline">
+koreareb · 부정청약 관리 프로그램 | 청약 신청자 자료를 전처리하고 부정청약 위험도를 계산해 점검 대상을 고르고, 점검 결과를 기록·집계하는 Windows 데스크톱 프로그램. Unity 2021.3 앱, SQLite DB, Python 위험도 모델로 이루어져 있다. | Assets/Scenes/Main.unity
+  - 화면 (사이트맵) | 로그인 → 대시보드, 상단 메뉴 4개(주택청약 시장관리·통계·이력관리·계정관리)와 내 정보. 메뉴 전환은 GnbViewControl 이 맡는다. | GnbViewControl.cs, ViewMain.cs
+    - 로그인 | 아이디·비밀번호 확인(PBKDF2 해시, 예전 Base64 비밀번호는 로그인할 때 해시로 바뀜). 5회 틀리면 잠기고 정지·잠금 계정은 들어갈 수 없다. 성공하면 접속 이력을 남긴다. | ViewLogin.cs, PasswordHasher.cs
+    - 대시보드 | 로그인 후 첫 화면. 가장 최근 업로드일부터 1년 동안의 신청자를 지역별로 보여 준다. | ViewDashBoard.cs
+      - 전국 위험도 지도 | 시도별 평균 부정청약 위험도를 색으로 표시한다. 지역을 누르면 시군구 지도로 들어간다. | ViewMap.cs, ManagerMapColor.cs, MapEvent.cs
+      - 위험도 순위 | 위험도가 높은 지역과 단지의 순위 | Item_RankChart.cs
+      - 위험도 구간 | 전체, 상위 5%·10%·20% 신청자의 평균 위험도 | DatabaseAccess.cs
+      - 단지별 팝업 | 지도에서 고른 지역의 단지별 그래프, 이미지 저장 | ViewMapGraphPopup.cs
+      - 지도 검색 | 지역 이름으로 찾기 | ViewMapSearch.cs
+    - 주택청약 시장관리 | 자료 → 위험도 → 점검 대상 → 점검 결과 순서로 쓰는 4개 화면
+      - 데이터 전처리 | 원본 CSV 선택 → 지역 코드·세대 관계 오류 검사 → 오류 수정 팝업 → Preparation.py 실행 → 원본 폴더에 _전처리.csv 저장 | ViewPrepare.cs, ViewErrorPopup.cs, Item_Prepare.cs
+      - 위험도 산출 | Launcher.py 로 부정청약·위장전입·불법매매 위험도를 계산 → 결과 목록 확인 → 산출결과 전송(DB 저장) | ViewDangerous.cs, Item_RiskData.cs
+      - 단지 선정 | 기간·지역·모델·상위 % 조건으로 단지별 평균 위험도 순위. 엑셀 다운로드와 출력 | ViewDanji.cs, Item_Danji.cs
+      - 실시 · 등록 | 점검 대상 신청자 목록(47개 컬럼)에서 점검 여부와 부정청약 판정을 입력하고 결과를 저장한다. 선택 삭제, 엑셀(172열), 파일과 맞춰 조회 | ViewExecute.cs, Item_Check.cs
+    - 통계 | 모집공고일 기준 집계
+      - 지역별 | 시도별 신청자 수, 점검 결과, 위험도. 지도와 그래프 | ViewStatisticLocal.cs
+      - 단지별 | 점검을 마친(Y) 신청자 기준 단지별 위험도와 적발 수 | ViewStatisticDanji.cs
+    - 이력관리 | 누가 언제 무엇을 했는지
+      - 접속 이력 | 로그인 기록 | ViewConnectHistory.cs, Item_ConnectLog.cs
+      - 변경 이력 | 전처리 실행, 위험도 산출, 결과 저장 기록 | ViewChangeHistory.cs, Item_ChangeLog.cs
+      - 다운로드 이력 | 엑셀·이미지 저장 기록 | ViewDownloadHistory.cs, Item_DownLog.cs
+    - 계정관리 | 계정 추가(admin001…), 비밀번호 초기화, 계정 정지, 정보 수정, 생성일 기간 검색 | ViewAccountManager.cs, Item_Member.cs
+    - 내 정보 | 비밀번호 변경(8~16자, 3종류 이상 조합), 이름·부서·직급 수정 | ViewMyInfo.cs, ViewMyInfoEdit.cs
+    - 공통 요소 | 로딩·오류·확인 팝업, 토스트, 검색 조건 패널(기간, 시도 17개, 모델, 상위 %) | CommonPopup.cs, CommonErrorPopup.cs, CommonToastPopup.cs, SelectMenu.cs
+  - 앱 구조 (코드) | Unity 2021.3 · C# · Mono.Data.Sqlite. 화면 → 매니저 → DB 창구 → SQL 계층 → SQLite 순서로 부른다. | Assets/Scripts
+    - 화면 스크립트 | 화면 하나에 View 스크립트 하나. 목록의 한 줄은 Item 프리팹 | Assets/Scripts/ViewControl, Assets/Scripts/Item
+    - 매니저 | MainManager 는 팝업·로딩·이력 기록·파이썬 실행(RunProcessAsync), GnbViewControl 은 메뉴 전환, SelectMenu 는 검색 조건 | MainManager.cs, GnbViewControl.cs, SelectMenu.cs
+    - DB 창구 ServerManager | 연결 하나를 열어 두고 lock 으로 한 번에 하나씩 실행한다. 무거운 조회·쓰기는 백그라운드 스레드에서 돌리고, 실패하면 빈 결과를 돌려준다. | ServerManager.cs
+    - SQL 계층 DatabaseAccess | SQL 템플릿과 파라미터 바인딩. 좁게 순위를 매긴 뒤 넓은 행을 읽고, 쓰기는 트랜잭션 한 번, 엑셀은 DB 에서 바로 파일로 흘려 쓴다. | DatabaseAccess.cs
+    - DB 마이그레이션 | 앱이 시작할 때 PRAGMA user_version 을 보고 인덱스를 추가하고 WAL 을 켠다. | DbMigrator.cs, Sql/migrations/001_performance_indexes.sql
+    - 비밀번호 해시 | PBKDF2-SHA256 10만 회, 사용자별 salt | PasswordHasher.cs
+    - CSV 저장 | 쉼표·따옴표·줄바꿈을 처리하고 EUC-KR 로 저장 | CsvUtil.cs
+    - 외부 플러그인 | 파일 선택 창(StandaloneFileBrowser), CSV 읽기(ExcelDataReader), 그래프(EzChart), 기간 선택(Date Range Picker) | Assets/StandaloneFileBrowser, Assets/EzChart, Assets/Date Range Picker
+  - 데이터 (SQLite) | WAL 모드. 앱은 연결 하나로 읽고 쓰고, 업로드할 때는 파이썬이 같은 파일에 쓴다. | Assets/StreamingAssets/koreareb.db
+    - tb_riskdata | 신청자 1명 = 1행, 175개 컬럼. 키 data_no = 주택관리번호+동+호수+공급유형+특별공급종류+생년+성명
+      - 신청 정보 | 주택, 공급, 신청자, 가점, 특별공급 항목
+      - 위험도 | 부정청약(unauth)·위장전입(fake)·불법매매(sale) × RF·XGB 확률과 상위 50·25·10% 표시
+      - 점검 결과 | 점검 여부, 부정청약 판정과 유형, 위장전입·통장매매·기타, 점검여부(N 미점검 · Z 해당없음 · Y 점검완료)
+      - 날짜 | rec_anno_date 모집공고일(통계 기준), change_date 업로드일시(대시보드 기준)
+    - tb_checkresult | tb_riskdata 와 같은 구조. 예전 파일 업로드용
+    - tb_bjdong | 지역 코드 → 지역 이름(시도·시군구 267개). 강원 51·전북 52 새 코드는 예전 코드로 합쳐 집계한다.
+    - tb_member | 계정. 상태 1 정상 · 2 정지 · 3 잠금, 로그인 실패 횟수, 비밀번호 해시
+    - 이력 테이블 | tb_connect_log 접속, tb_change_log 변경, tb_down_log 다운로드. 시간은 UTC 로 저장하고 화면에는 +9시간으로 보여 준다.
+    - 인덱스 | 모집공고일 기준·업로드일시 기준 커버링 인덱스 2개, 지역 코드, 로그 날짜, 회원 아이디 | Sql/migrations/001_performance_indexes.sql
+  - 분석 (Python) | 앱이 작업 폴더 C:\korea_rebs 에서 python 을 실행한다. | korea_rebs
+    - Preparation.py | dataframe.csv → 파생 변수 계산 → dataframe_add.csv | korea_rebs/Preparation.py
+    - Launcher.py | dataframe_train.csv 로 랜덤 포레스트·XGBoost 를 학습하고 dataframe_add.csv 를 예측해 Result.csv 를 만든다(위험 3종 × 모델 2종 × 확률·상위 %). | korea_rebs/Launcher.py
+    - SendInsertUpdate.py | SendResult.csv 를 tb_riskdata 에 data_no 기준으로 UPSERT. 앱이 DB 경로를 인자로 넘긴다. | korea_rebs/SendInsertUpdate.py
+    - SaveResult.py | 예전 '결과 저장' 스크립트(저장소에 없음). 지금은 앱이 DB 에 바로 저장하고, 인스펙터의 useLegacyPythonSave 로 되돌릴 수 있다. | ViewExecute.cs
+    - 실험 노트북 | 모델 실험용 Jupyter 노트북 | korea_rebs/Launcher_수정.ipynb, korea_rebs/Preparation_수정.ipynb
+  - 실행 환경 | Windows PC 한 대에서 앱, DB, Python 이 함께 돈다.
+    - 앱 빌드 | 빌드 폴더의 부정청약관리프로그램_Data/StreamingAssets 에 DB 가 들어 있다.
+    - 작업 폴더 C:\korea_rebs | 파이썬 스크립트와 중간 파일(dataframe.csv, dataframe_add.csv, Result.csv, SendResult.csv) | C:\korea_rebs
+    - Python 3 | pandas, numpy, scikit-learn, xgboost
+    - 결과 비교 도구 | 이전·새 SQL 결과가 같은지 확인한다. 행 내용은 출력하지 않는다. | Sql/tools/verify_queries.py
+    - 성능 리뷰 문서 | 느려진 원인, 측정치, Unity 확인 목록 | docs/PERFORMANCE_REVIEW.md
+  - 확장 계획 | 아직 만들지 않은 것. 점선으로 그린다.
+    - [계획] 실시·등록 서버 페이징 | 수십만 건 이상이면 한 페이지씩 DB 에서 읽는다. GetExecutePage·GetExecuteCounts 가 준비되어 있다. | ServerManager.cs
+    - [계획] 통계 요약 테이블 | 업로드할 때 단지×일자 집계를 미리 만들어 대시보드를 1초 안에 연다.
+    - [계획] 개인정보 마스킹 | 목록과 엑셀에서 성명·생년월일·주소 일부를 가린다.
+    - [계획] DB 위치 옮기기 | 첫 실행 때 persistentDataPath 로 복사해 Program Files 에 설치해도 쓸 수 있게 한다.
+    - [계획] 경로 설정 파일 | C:\korea_rebs 고정 경로를 설정 파일로 뺀다.
+    - [계획] 이력 화면 하나로 | 접속·변경·다운로드 이력 3개 화면을 공통 컴포넌트 하나로 합친다.
+    - [계획] 임시 비밀번호 자동 생성 | 초기화할 때마다 새 비밀번호를 만들어 관리자에게 보여 준다.
+</script>
+
+<script>
+(function () {
+  'use strict';
+
+  var SVGNS = 'http://www.w3.org/2000/svg';
+  function $(s, r) { return (r || document).querySelector(s); }
+  function $all(s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); }
+  var reduceMotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+  function svg(tag, attrs, parent) {
+    var e = document.createElementNS(SVGNS, tag);
+    if (attrs) for (var k in attrs) e.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(e);
+    return e;
+  }
+  function h(tag, attrs, kids) {
+    var e = document.createElement(tag);
+    if (attrs) for (var k in attrs) {
+      var v = attrs[k];
+      if (v == null || v === false) continue;
+      if (k === 'text') e.textContent = v;
+      else if (k === 'class') e.className = v;
+      else e.setAttribute(k, v);
+    }
+    if (kids != null) [].concat(kids).forEach(function (c) { if (c != null) e.append(c); });
+    return e;
+  }
+  function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+
+  var css = getComputedStyle(document.documentElement);
+  var FONT = css.getPropertyValue('--font-body').trim() || 'sans-serif';
+  var MONO = css.getPropertyValue('--font-mono').trim() || 'monospace';
+  var mctx = document.createElement('canvas').getContext('2d');
+  function textWidth(t, font) { mctx.font = font; return mctx.measureText(t).width; }
+
+  // 띄어쓰기 없는 긴 이름(파일 이름 등)은 _ 뒤, . 앞, 대문자 앞에서 나눈다. 그래도 길면 글자 단위.
+  function splitLongWord(w, font, maxW) {
+    var parts = [], rest = w;
+    while (textWidth(rest, font) > maxW) {
+      var cut = -1;
+      for (var i = 1; i < rest.length; i++) {
+        var a = rest[i - 1], b = rest[i];
+        var nice = a === '_' || b === '.' || (/[A-Z]/.test(b) && /[a-z]/.test(a));
+        if (textWidth(rest.slice(0, i), font) > maxW) break;
+        if (nice) cut = i;
+      }
+      if (cut < 0) {
+        cut = 1;
+        while (cut < rest.length && textWidth(rest.slice(0, cut + 1), font) <= maxW) cut++;
+      }
+      parts.push(rest.slice(0, cut));
+      rest = rest.slice(cut);
+    }
+    parts.push(rest);
+    return parts;
+  }
+  function wrapText(text, font, maxW, maxLines) {
+    var words = text.split(' '), lines = [], cur = '';
+    function push(w) {
+      var next = cur ? cur + ' ' + w : w;
+      if (textWidth(next, font) <= maxW || !cur) {
+        if (!cur && textWidth(w, font) > maxW) {
+          var pieces = splitLongWord(w, font, maxW);
+          for (var i = 0; i < pieces.length - 1; i++) lines.push(pieces[i]);
+          cur = pieces[pieces.length - 1];
+        } else cur = next;
+      } else { lines.push(cur); cur = ''; push(w); }
+    }
+    words.forEach(push);
+    if (cur) lines.push(cur);
+    if (lines.length > maxLines) {
+      var rest = lines.slice(maxLines - 1).join(' ');
+      lines = lines.slice(0, maxLines - 1).concat([truncate(rest, font, maxW)]);
+    }
+    return lines;
+  }
+  function truncate(text, font, maxW) {
+    if (textWidth(text, font) <= maxW) return text;
+    var chars = Array.from(text);
+    while (chars.length && textWidth(chars.join('') + '…', font) > maxW) chars.pop();
+    return chars.join('') + '…';
+  }
+
+  // =====================================================================
+  // 개요(아웃라인) 읽기: 한 줄 = 노드, 들여쓰기 = 가지, "이름 | 설명 | 파일, 파일"
+  // =====================================================================
+  function parseOutline(text) {
+    var errors = [], root = null, stack = [];
+    text.split(/\r?\n/).forEach(function (raw, i) {
+      if (!raw.trim() || /^\s*#/.test(raw)) return;
+      var m = raw.match(/^([ \t]*)(?:[-*+]\s+)?(.*)$/);
+      var indent = m[1].replace(/\t/g, '    ').length;
+      var parts = m[2].split('|').map(function (s) { return s.trim(); });
+      var name = parts[0];
+      if (!name) { errors.push((i + 1) + '번째 줄: 이름이 비어 있습니다.'); return; }
+      var planned = false, pm = name.match(/^\[계획\]\s*(.*)$/);
+      if (pm) { planned = true; name = pm[1] || '이름 없음'; }
+      var node = {
+        name: name, desc: parts[1] || '',
+        files: (parts[2] || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean),
+        planned: planned, children: [], line: i + 1, parent: null
+      };
+      while (stack.length && stack[stack.length - 1].indent >= indent) stack.pop();
+      if (!stack.length) {
+        if (!root) root = node;
+        else {
+          errors.push((i + 1) + '번째 줄: 맨 위 노드가 둘 이상이라 첫 노드 아래에 붙였습니다. 들여쓰기를 확인하세요.');
+          node.parent = root; root.children.push(node);
+          stack.push({ indent: -1, node: root });
+        }
+      } else {
+        node.parent = stack[stack.length - 1].node;
+        node.parent.children.push(node);
+      }
+      stack.push({ indent: indent, node: node });
+    });
+    return { root: root, errors: errors };
+  }
+  function walkAll(n, fn) { fn(n); n.children.forEach(function (c) { walkAll(c, fn); }); }
+  function annotate(root) {
+    var count = 0;
+    (function walk(n, depth, key, branch) {
+      n.depth = depth; n.key = key; n.branch = branch; count++;
+      var seen = {};
+      n.children.forEach(function (c, i) {
+        seen[c.name] = (seen[c.name] || 0) + 1;
+        walk(c, depth + 1, key + '/' + c.name + (seen[c.name] > 1 ? '#' + seen[c.name] : ''), depth === 0 ? i % 6 : branch);
+      });
+    })(root, 0, root.name, -1);
+    return count;
+  }
+
+  // =====================================================================
+  // 마인드맵
+  // =====================================================================
+  var map = { root: null, byKey: new Map(), collapsed: new Set(), sides: new Map(), sideSig: '', selected: null,
+              query: '', matchSet: new Set(), matchList: [], matchIndex: -1, k: 1, tx: 0, ty: 0, visible: [],
+              fitted: false, touched: false, anim: 0, dragMoved: false, count: 0 };
+  var mapSvg = $('#map-svg'), mapView = $('#map-viewport'), mapLinks = $('#map-links'), mapNodes = $('#map-nodes');
+
+  function styleFor(d) {
+    if (d === 0) return { font: '700 17px ' + FONT, h: 50, pad: 22, rx: 14, min: 120 };
+    if (d === 1) return { font: '600 15px ' + FONT, h: 38, pad: 18, rx: 19, min: 80 };
+    return { font: '500 13.5px ' + FONT, h: 30, pad: 13, rx: 8, min: 48 };
+  }
+  function hgap(d) { return d === 0 ? 64 : d === 1 ? 42 : 32; }
+  function vgap(d) { return d <= 1 ? 18 : d === 2 ? 9 : 7; }
+  function kidsOf(n) { return map.collapsed.has(n.key) ? [] : n.children; }
+  function colorOf(n) { return n.depth === 0 ? 'var(--accent)' : 'var(--b' + (n.branch + 1) + ')'; }
+  function softOf(n) { return n.depth === 0 ? 'var(--accent)' : 'var(--b' + (n.branch + 1) + '-soft)'; }
+  function topOf(n) { while (n && n.depth > 1) n = n.parent; return n; }
+
+  function defaultCollapsed(root) {
+    var s = new Set();
+    walkAll(root, function (n) { if (n.depth >= 2 && n.children.length) s.add(n.key); });
+    return s;
+  }
+  // 처음 열 때: 넓은 화면은 2단계까지, 폰처럼 좁은 화면은 큰 가지만 보여 글자가 읽히게 한다
+  function startCollapsed(root) {
+    var s = defaultCollapsed(root);
+    if (window.innerWidth < 640) root.children.forEach(function (c) { if (c.children.length) s.add(c.key); });
+    return s;
+  }
+  function assignSides() {
+    map.sides = new Map();
+    var kids = map.root.children;
+    var w = kids.map(function (c) { return Math.max(1, c.children.length); });
+    var total = w.reduce(function (a, b) { return a + b; }, 0), acc = 0;
+    kids.forEach(function (c, i) {
+      var right = i === 0 || acc < total / 2;
+      if (right) acc += w[i];
+      map.sides.set(c.key, right ? 1 : -1);
+    });
+  }
+  function loadRoot(root, keepState) {
+    map.count = annotate(root);
+    var old = map.collapsed;
+    map.root = root;
+    map.byKey = new Map();
+    walkAll(root, function (n) { map.byKey.set(n.key, n); });
+    map.collapsed = keepState
+      ? new Set(Array.from(old).filter(function (k) { return map.byKey.has(k); }))
+      : startCollapsed(root);
+    var sig = root.children.map(function (c) { return c.key; }).join('\u0001');
+    if (!keepState || sig !== map.sideSig) { assignSides(); map.sideSig = sig; }
+    if (!map.byKey.has(map.selected)) map.selected = root.key;
+    computeMatches(false);
+  }
+
+  function layout() {
+    var root = map.root;
+    (function measure(n) {
+      var s = styleFor(n.depth);
+      n.s = s; n.h = s.h;
+      n.w = Math.max(s.min, Math.ceil(textWidth(n.name, s.font)) + s.pad * 2);
+      n.children.forEach(measure);
+    })(root);
+    (function heights(n) {
+      var kids = kidsOf(n);
+      kids.forEach(heights);
+      if (!kids.length) { n.sh = n.h; return; }
+      var gap = vgap(n.depth + 1);
+      n.sh = Math.max(n.h, kids.reduce(function (a, c) { return a + c.sh; }, 0) + gap * (kids.length - 1));
+    })(root);
+    root.x = -root.w / 2; root.y = -root.h / 2; root.cy = 0; root.dir = 0;
+    var kids = kidsOf(root);
+    [[1, kids.filter(function (c) { return (map.sides.get(c.key) || 1) > 0; })],
+     [-1, kids.filter(function (c) { return (map.sides.get(c.key) || 1) < 0; })]].forEach(function (pair) {
+      var dir = pair[0], group = pair[1];
+      if (!group.length) return;
+      var gap = vgap(1);
+      var total = group.reduce(function (a, c) { return a + c.sh; }, 0) + gap * (group.length - 1);
+      var y = -total / 2;
+      var x = dir > 0 ? root.x + root.w + hgap(0) : root.x - hgap(0);
+      group.forEach(function (c) { place(c, x, y + c.sh / 2, dir); y += c.sh + gap; });
+    });
+  }
+  function place(n, x, cy, dir) {
+    n.dir = dir; n.cy = cy; n.y = cy - n.h / 2; n.x = dir > 0 ? x : x - n.w;
+    var kids = kidsOf(n);
+    if (!kids.length) return;
+    var gap = vgap(n.depth + 1);
+    var total = kids.reduce(function (a, c) { return a + c.sh; }, 0) + gap * (kids.length - 1);
+    var y = cy - total / 2;
+    var cx = dir > 0 ? n.x + n.w + hgap(n.depth) : n.x - hgap(n.depth);
+    kids.forEach(function (c) { place(c, cx, y + c.sh / 2, dir); y += c.sh + gap; });
+  }
+
+  function ariaFor(n) {
+    var s = n.name;
+    if (n.planned) s += ', 계획';
+    if (n.children.length) s += map.collapsed.has(n.key) ? ', 접힘, 하위 ' + n.children.length + '개' : ', 펼침, 하위 ' + n.children.length + '개';
+    return s;
+  }
+
+  function renderMap() {
+    if (!map.root) return;
+    layout();
+    mapLinks.textContent = ''; mapNodes.textContent = '';
+    var q = map.query, visible = [];
+    (function walk(n) {
+      visible.push(n);
+      kidsOf(n).forEach(function (c) { drawLink(n, c, q && !map.matchSet.has(c)); walk(c); });
+    })(map.root);
+    map.visible = visible;
+    visible.forEach(function (n) { drawNode(n, q ? (map.matchSet.has(n) ? 'match' : 'dim') : ''); });
+    visible.forEach(function (n) { if (n.depth > 0 && n.children.length) drawToggle(n, q && !map.matchSet.has(n)); });
+    applyTransform();
+    renderLegend();
+  }
+  function drawLink(p, c, dim) {
+    var dir = c.dir;
+    var px = dir > 0 ? p.x + p.w : p.x, py = p.cy;
+    var cx = dir > 0 ? c.x : c.x + c.w, cy = c.cy;
+    var dx = cx - px;
+    var path = svg('path', {
+      'class': 'link' + (c.planned ? ' planned' : '') + (dim ? ' dim' : ''),
+      d: 'M' + px + ' ' + py + ' C' + (px + dx * 0.5) + ' ' + py + ' ' + (cx - dx * 0.5) + ' ' + cy + ' ' + cx + ' ' + cy,
+      'stroke-width': c.depth === 1 ? 2.6 : c.depth === 2 ? 1.8 : 1.3
+    }, mapLinks);
+    path.style.stroke = colorOf(c);
+  }
+  function drawNode(n, state) {
+    var cls = 'node d' + Math.min(n.depth, 2) + (n.planned ? ' planned' : '') + (map.selected === n.key ? ' selected' : '') + (state ? ' ' + state : '');
+    var g = svg('g', { 'class': cls, transform: 'translate(' + n.x + ' ' + n.y + ')', tabindex: '0', role: 'button', 'data-key': n.key, 'aria-label': ariaFor(n) }, mapNodes);
+    g.style.setProperty('--c', colorOf(n));
+    g.style.setProperty('--cs', softOf(n));
+    svg('rect', { 'class': 'ring', x: -4, y: -4, width: n.w + 8, height: n.h + 8, rx: n.s.rx + 4 }, g);
+    svg('rect', { 'class': 'box', width: n.w, height: n.h, rx: n.s.rx }, g);
+    var t = svg('text', { 'class': 'label', x: n.w / 2, y: n.h / 2 + 0.5, 'text-anchor': 'middle', 'dominant-baseline': 'central' }, g);
+    t.textContent = n.name;
+  }
+  function drawToggle(n, dim) {
+    var closed = map.collapsed.has(n.key);
+    var cx = n.dir > 0 ? n.x + n.w + 11 : n.x - 11;
+    var g = svg('g', { 'class': 'toggle' + (closed ? ' closed' : '') + (dim ? ' dim' : ''), transform: 'translate(' + cx + ' ' + n.cy + ')', 'data-toggle': n.key, 'aria-hidden': 'true' }, mapNodes);
+    g.style.setProperty('--c', colorOf(n));
+    svg('circle', { 'class': 'hit', r: 15 }, g);
+    svg('circle', { 'class': 't', r: closed ? 10 : 8 }, g);
+    var t = svg('text', { 'text-anchor': 'middle', 'dominant-baseline': 'central', y: 0.5 }, g);
+    t.textContent = closed ? String(n.children.length) : '−';
+  }
+  function renderLegend() {
+    var box = $('#map-legend'); box.textContent = '';
+    map.root.children.forEach(function (c) {
+      var it = h('span', { 'class': 'item' }, [h('span', { 'class': 'swatch', style: '--c: ' + colorOf(c) }), c.name]);
+      box.append(it);
+    });
+    box.append(h('span', { 'class': 'item' }, [h('span', { 'class': 'swatch dashed' }), '점선 = 아직 없는 계획']));
+  }
+
+  // ---- 화면 이동 / 확대 ----
+  function applyTransform() { mapView.setAttribute('transform', 'translate(' + map.tx + ' ' + map.ty + ') scale(' + map.k + ')'); }
+  function boardSize() { var r = mapSvg.getBoundingClientRect(); return { w: r.width, h: r.height }; }
+  function bounds(nodes) {
+    var b = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
+    nodes.forEach(function (n) {
+      b.x0 = Math.min(b.x0, n.x - (n.dir < 0 ? 24 : 0)); b.y0 = Math.min(b.y0, n.y);
+      b.x1 = Math.max(b.x1, n.x + n.w + (n.dir > 0 ? 24 : 0)); b.y1 = Math.max(b.y1, n.y + n.h);
+    });
+    return b;
+  }
+  function setView(k, tx, ty, animate) {
+    cancelAnimationFrame(map.anim);
+    if (!animate || reduceMotion) { map.k = k; map.tx = tx; map.ty = ty; applyTransform(); return; }
+    var k0 = map.k, x0 = map.tx, y0 = map.ty, t0 = performance.now(), dur = 280;
+    function step(now) {
+      var t = Math.min(1, (now - t0) / dur), e = 1 - Math.pow(1 - t, 3);
+      map.k = k0 + (k - k0) * e; map.tx = x0 + (tx - x0) * e; map.ty = y0 + (ty - y0) * e;
+      applyTransform();
+      if (t < 1) map.anim = requestAnimationFrame(step);
+    }
+    map.anim = requestAnimationFrame(step);
+  }
+  function fit(animate) {
+    var s = boardSize();
+    if (!s.w || !s.h || !map.visible.length) return false;
+    var b = bounds(map.visible), bw = b.x1 - b.x0, bh = b.y1 - b.y0;
+    var k = clamp(Math.min((s.w - 40) / bw, (s.h - 64) / bh), 0.3, 1.1);
+    setView(k, s.w / 2 - (b.x0 + bw / 2) * k, (s.h - 20) / 2 - (b.y0 + bh / 2) * k, animate);
+    map.fitted = true;
+    return true;
+  }
+  function centerOn(n, animate) {
+    var s = boardSize();
+    if (!s.w) return;
+    var k = Math.max(map.k, 0.6);
+    setView(k, s.w / 2 - (n.x + n.w / 2) * k, s.h / 2 - n.cy * k, animate);
+  }
+  function onScreen(n) {
+    var s = boardSize();
+    var x = n.x * map.k + map.tx, y = n.y * map.k + map.ty;
+    return x > 8 && y > 8 && x + n.w * map.k < s.w - 8 && y + n.h * map.k < s.h - 30;
+  }
+  function zoomBy(f, px, py) {
+    var s = boardSize();
+    if (px == null) { px = s.w / 2; py = s.h / 2; }
+    var k = clamp(map.k * f, 0.25, 2.5), r = k / map.k;
+    map.tx = px - (px - map.tx) * r; map.ty = py - (py - map.ty) * r; map.k = k;
+    map.touched = true;
+    applyTransform();
+  }
+
+  // ---- 선택 / 펼치기 ----
+  function revealAncestors(n) { for (var p = n.parent; p; p = p.parent) map.collapsed.delete(p.key); }
+  function focusKey(key) {
+    var el = null;
+    $all('#map-nodes .node').forEach(function (g) { if (g.getAttribute('data-key') === key) el = g; });
+    if (el) el.focus({ preventScroll: true });
+  }
+  function activate(key, fromKeyboard) {
+    var n = map.byKey.get(key);
+    if (!n) return;
+    var wasClosed = map.collapsed.has(n.key);
+    map.selected = n.key;
+    if (wasClosed) map.collapsed.delete(n.key);
+    renderMap();
+    showDetail(n);
+    if (wasClosed || !onScreen(n)) centerOn(n, true);
+    if (fromKeyboard) focusKey(key);
+  }
+  function toggle(key) {
+    var n = map.byKey.get(key);
+    if (!n) return;
+    if (map.collapsed.has(key)) map.collapsed.delete(key); else map.collapsed.add(key);
+    renderMap();
+    if (map.selected === key) showDetail(n);
+    if (!onScreen(n)) centerOn(n, true);
+  }
+  function goTo(key) {
+    var n = map.byKey.get(key);
+    if (!n) return;
+    revealAncestors(n);
+    map.selected = n.key;
+    renderMap();
+    showDetail(n);
+    centerOn(n, true);
+  }
+
+  // ---- 설명 패널 ----
+  function showDetail(n) {
+    var box = $('#panel-detail');
+    box.textContent = '';
+    var path = [];
+    for (var p = n; p; p = p.parent) path.unshift(p);
+    if (path.length > 1) {
+      var crumbs = h('nav', { 'class': 'crumbs', 'aria-label': '위치' });
+      path.forEach(function (q, i) {
+        if (i) crumbs.append(h('span', { 'aria-hidden': 'true', text: '›' }));
+        crumbs.append(i === path.length - 1
+          ? h('span', { text: q.name })
+          : h('button', { 'class': 'crumb', type: 'button', 'data-goto': q.key, text: i === 0 ? q.name.split('·')[0].trim() : q.name }));
+      });
+      box.append(crumbs);
+    }
+    box.append(h('h2', { text: n.name }));
+    var top = topOf(n);
+    if (n.depth > 0 || n.planned) {
+      var meta = h('p', { 'class': 'meta' });
+      if (top && n.depth > 0) meta.append(h('span', { 'class': 'chip', style: '--c: ' + colorOf(top) + '; --cs: ' + softOf(top), text: top.name }));
+      if (n.planned) meta.append(h('span', { 'class': 'chip planned', text: '계획' }));
+      box.append(meta);
+    }
+    box.append(n.desc
+      ? h('p', { 'class': 'desc', text: n.desc })
+      : h('p', { 'class': 'desc empty', text: '설명이 아직 없습니다. 개요 편집에서 이름 뒤에 "| 설명" 을 붙이면 여기에 보입니다.' }));
+    if (n.files.length) {
+      box.append(h('h3', { text: '파일' }));
+      var ul = h('ul', { 'class': 'files' });
+      n.files.forEach(function (f) { ul.append(h('li', null, h('code', { text: f }))); });
+      box.append(ul);
+    }
+    if (n.children.length) {
+      box.append(h('h3', { text: '하위 ' + n.children.length + '개' }));
+      var kl = h('ul', { 'class': 'kids' });
+      n.children.forEach(function (c) {
+        kl.append(h('li', null, h('button', { type: 'button', 'class': 'list-btn' + (c.planned ? ' planned' : ''), 'data-goto': c.key },
+          [h('span', { 'class': 'dot', style: '--c: ' + colorOf(c) }), c.name])));
+      });
+      box.append(kl);
+    }
+  }
+  $('#panel-detail').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-goto]');
+    if (b) goTo(b.getAttribute('data-goto'));
+  });
+
+  // ---- 찾기 ----
+  function matchNode(n, q) { return (n.name + ' ' + n.desc + ' ' + n.files.join(' ')).toLowerCase().indexOf(q) >= 0; }
+  function computeMatches(reveal) {
+    map.matchSet = new Set(); map.matchList = []; map.matchIndex = -1;
+    if (!map.query || !map.root) return;
+    walkAll(map.root, function (n) {
+      if (matchNode(n, map.query)) { map.matchSet.add(n); map.matchList.push(n); if (reveal) revealAncestors(n); }
+    });
+  }
+  var searchInput = $('#map-search'), countEl = $('#search-count');
+  function updateCount() {
+    countEl.textContent = !map.query ? '' : map.matchList.length ? map.matchList.length + '개 찾음 · Enter 로 차례대로 이동' : '찾은 노드 없음';
+  }
+  searchInput.addEventListener('input', function () {
+    map.query = searchInput.value.trim().toLowerCase();
+    computeMatches(true);
+    renderMap();
+    updateCount();
+  });
+  searchInput.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && map.matchList.length) {
+      e.preventDefault();
+      map.matchIndex = (map.matchIndex + 1) % map.matchList.length;
+      var n = map.matchList[map.matchIndex];
+      map.selected = n.key;
+      renderMap(); showDetail(n); centerOn(n, true);
+      countEl.textContent = (map.matchIndex + 1) + ' / ' + map.matchList.length + ' · ' + n.name;
+    } else if (e.key === 'Escape') {
+      searchInput.value = ''; map.query = ''; computeMatches(false); renderMap(); updateCount();
+    }
+  });
+
+  // ---- 마우스 / 터치 ----
+  var pts = new Map(), drag = null, pinch = null;
+  function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+  mapSvg.addEventListener('pointerdown', function (e) {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pts.size === 1) drag = { id: e.pointerId, x: e.clientX, y: e.clientY, tx: map.tx, ty: map.ty, moved: false };
+    else if (pts.size === 2) {
+      var v = Array.from(pts.values());
+      pinch = { d: Math.max(1, dist(v[0], v[1])), k: map.k, cx: (v[0].x + v[1].x) / 2, cy: (v[0].y + v[1].y) / 2, tx: map.tx, ty: map.ty };
+      drag = null; map.dragMoved = true;
+    }
+  });
+  mapSvg.addEventListener('pointermove', function (e) {
+    if (!pts.has(e.pointerId)) return;
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pinch && pts.size >= 2) {
+      var v = Array.from(pts.values()), rect = mapSvg.getBoundingClientRect();
+      var k = clamp(pinch.k * dist(v[0], v[1]) / pinch.d, 0.25, 2.5);
+      var cx = (v[0].x + v[1].x) / 2 - rect.left, cy = (v[0].y + v[1].y) / 2 - rect.top;
+      var px = pinch.cx - rect.left, py = pinch.cy - rect.top;
+      map.k = k;
+      map.tx = cx - (px - pinch.tx) * (k / pinch.k);
+      map.ty = cy - (py - pinch.ty) * (k / pinch.k);
+      map.touched = true;
+      applyTransform();
+      return;
+    }
+    if (drag && drag.id === e.pointerId) {
+      var dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+      if (!drag.moved && Math.hypot(dx, dy) > 4) {
+        drag.moved = true; map.dragMoved = true; map.touched = true;
+        try { mapSvg.setPointerCapture(e.pointerId); } catch (err) { /* 무시 */ }
+        mapSvg.classList.add('dragging');
+        cancelAnimationFrame(map.anim);
+      }
+      if (drag.moved) { map.tx = drag.tx + dx; map.ty = drag.ty + dy; applyTransform(); }
+    }
+  });
+  function endPointer(e) {
+    pts.delete(e.pointerId);
+    if (pts.size < 2) pinch = null;
+    if (drag && drag.id === e.pointerId) { drag = null; mapSvg.classList.remove('dragging'); }
+    if (!pts.size) setTimeout(function () { map.dragMoved = false; }, 0);
+  }
+  mapSvg.addEventListener('pointerup', endPointer);
+  mapSvg.addEventListener('pointercancel', endPointer);
+  mapSvg.addEventListener('wheel', function (e) {
+    e.preventDefault();
+    var rect = mapSvg.getBoundingClientRect();
+    var unit = e.deltaMode === 1 ? 0.05 : 0.0018;
+    zoomBy(Math.exp(-e.deltaY * unit * (e.ctrlKey ? 2.5 : 1)), e.clientX - rect.left, e.clientY - rect.top);
+  }, { passive: false });
+  mapSvg.addEventListener('click', function (e) {
+    if (map.dragMoved) { map.dragMoved = false; return; }
+    var tg = e.target.closest('[data-toggle]');
+    if (tg) { toggle(tg.getAttribute('data-toggle')); return; }
+    var nd = e.target.closest('.node');
+    if (nd) activate(nd.getAttribute('data-key'), false);
+  });
+  mapSvg.addEventListener('keydown', function (e) {
+    var nd = e.target.closest ? e.target.closest('.node') : null;
+    if (!nd) return;
+    var key = nd.getAttribute('data-key');
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activate(key, true); }
+    else if (e.key === '-' || e.key === 'Backspace') {
+      var n = map.byKey.get(key);
+      if (n && n.children.length && !map.collapsed.has(key)) { e.preventDefault(); toggle(key); focusKey(key); }
+    }
+  });
+
+  $('#btn-expand').addEventListener('click', function () { map.collapsed.clear(); renderMap(); fit(true); });
+  $('#btn-collapse').addEventListener('click', function () { map.collapsed = defaultCollapsed(map.root); renderMap(); fit(true); });
+  $('#btn-fit').addEventListener('click', function () { fit(true); });
+  $('#btn-zoom-in').addEventListener('click', function () { zoomBy(1.2); });
+  $('#btn-zoom-out').addEventListener('click', function () { zoomBy(1 / 1.2); });
+
+  // ---- 옆 패널 탭 ----
+  var ptabs = $all('.ptab');
+  function showPanel(which) {
+    ptabs.forEach(function (t) {
+      var on = t.getAttribute('data-panel') === which;
+      t.setAttribute('aria-selected', on ? 'true' : 'false');
+      t.tabIndex = on ? 0 : -1;
+    });
+    $('#panel-detail').hidden = which !== 'detail';
+    $('#panel-edit').hidden = which !== 'edit';
+    if (which === 'detail') { var n = map.byKey.get(map.selected); if (n) showDetail(n); }
+  }
+  ptabs.forEach(function (t) {
+    t.addEventListener('click', function () { showPanel(t.getAttribute('data-panel')); });
+    t.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+        e.preventDefault();
+        var next = t.getAttribute('data-panel') === 'detail' ? 'edit' : 'detail';
+        showPanel(next);
+        $('#ptab-' + next).focus();
+      }
+    });
+  });
+
+  // ---- 개요 편집 ----
+  var editor = $('#outline-editor'), statusEl = $('#outline-status'), fallback = $('#copy-fallback');
+  var DEFAULT_OUTLINE = $('#map-outline').textContent.replace(/^\s*\n/, '').replace(/\s+$/, '') + '\n';
+  var DRAFT_KEY = 'koreareb-system-map-outline';
+  function setStatus(text, warn) { statusEl.textContent = text; statusEl.classList.toggle('warn', !!warn); }
+  function saveDraft(text) {
+    try { if (text === DEFAULT_OUTLINE) localStorage.removeItem(DRAFT_KEY); else localStorage.setItem(DRAFT_KEY, text); } catch (err) { /* 저장소를 못 쓰면 그냥 넘어간다 */ }
+  }
+  function loadDraft() { try { return localStorage.getItem(DRAFT_KEY); } catch (err) { return null; } }
+  function nodeAtLine(line) {
+    var found = null;
+    walkAll(map.root, function (n) { if (n.line <= line && (!found || n.line > found.line)) found = n; });
+    return found;
+  }
+  function applyEditor() {
+    var r = parseOutline(editor.value);
+    if (!r.root) { setStatus('노드가 없습니다. 첫 줄에 맨 위 노드 이름을 쓰세요.', true); return; }
+    loadRoot(r.root, true);
+    saveDraft(editor.value);
+    var caretLine = editor.value.slice(0, editor.selectionStart).split('\n').length;
+    var n = nodeAtLine(caretLine);
+    if (n) { revealAncestors(n); map.selected = n.key; }
+    renderMap();
+    if (n && !onScreen(n)) centerOn(n, true);
+    setStatus(r.errors.length ? r.errors[0] + (r.errors.length > 1 ? ' (외 ' + (r.errors.length - 1) + '개)' : '') : '노드 ' + map.count + '개 · 지도에 반영했습니다.', r.errors.length > 0);
+  }
+  var editTimer = 0;
+  editor.addEventListener('input', function () { clearTimeout(editTimer); editTimer = setTimeout(applyEditor, 250); });
+
+  function toMermaid(root, maxDepth) {
+    function clean(s) {
+      return s.replace(/\(/g, '（').replace(/\)/g, '）').replace(/\[/g, '［').replace(/\]/g, '］')
+              .replace(/\{/g, '｛').replace(/\}/g, '｝').replace(/"/g, "'").replace(/`/g, "'")
+              .replace(/::/g, '：：').replace(/%%/g, '％％').trim();
+    }
+    var out = ['mindmap', '  root((' + clean(root.name.split('·')[0]) + '))'], planId = 0;
+    (function walk(n, depth) {
+      if (depth > maxDepth) return;
+      n.children.forEach(function (c) {
+        // [계획] 노드는 구름 모양 id)글자( 으로 그린다 (HTML 지도의 점선과 같은 뜻)
+        out.push(new Array(depth + 2).join('  ') + (c.planned ? 'plan' + (++planId) + ')' + clean(c.name) + '(' : clean(c.name)));
+        walk(c, depth + 1);
+      });
+    })(root, 1);
+    return out.join('\n');
+  }
+  window.korearebSystemMap = { toMermaid: function (d) { return toMermaid(map.root, d || 2); }, parseOutline: parseOutline };
+
+  function copyText(text, okMessage) {
+    function showFallback() {
+      fallback.hidden = false; fallback.value = text; fallback.focus(); fallback.select();
+      setStatus('자동 복사가 막혀 있어 아래 칸에 글을 넣고 선택해 두었습니다. Ctrl+C(⌘+C)로 복사하세요.', true);
+    }
+    try {
+      navigator.clipboard.writeText(text).then(function () { fallback.hidden = true; setStatus(okMessage, false); }, showFallback);
+    } catch (err) { showFallback(); }
+  }
+  $('#btn-copy-outline').addEventListener('click', function () {
+    copyText(editor.value, '개요를 복사했습니다. 이 파일의 <script id="map-outline"> 안에 붙여 넣으면 지도가 계속 남습니다.');
+  });
+  $('#btn-copy-mermaid').addEventListener('click', function () {
+    var d = parseInt($('#mermaid-depth').value, 10) || 2;
+    copyText('```mermaid\n' + toMermaid(map.root, d) + '\n```\n', 'README용 Mermaid 마인드맵을 복사했습니다. README.md 의 "시스템 맵" 코드 블록을 바꾸세요.');
+  });
+  $('#btn-reset-outline').addEventListener('click', function () {
+    editor.value = DEFAULT_OUTLINE;
+    saveDraft(DEFAULT_OUTLINE);
+    loadRoot(parseOutline(DEFAULT_OUTLINE).root, false);
+    renderMap(); fit(true);
+    setStatus('처음 지도로 되돌렸습니다.', false);
+  });
+  var draftBtn = $('#btn-load-draft'), savedDraft = loadDraft();
+  if (savedDraft && savedDraft !== DEFAULT_OUTLINE) draftBtn.hidden = false;
+  draftBtn.addEventListener('click', function () {
+    editor.value = savedDraft;
+    draftBtn.hidden = true;
+    applyEditor();
+    fit(true);
+  });
+
+  // =====================================================================
+  // 업무 흐름 (스윔레인)
+  // =====================================================================
+  var LANES = [
+    { id: 'user', name: '담당자', sub: '사람이 하는 일', c: 'var(--person)', cs: 'var(--person-soft)' },
+    { id: 'app', name: '앱 화면', sub: 'Unity', c: 'var(--b1)', cs: 'var(--b1-soft)' },
+    { id: 'files', name: '작업 폴더', sub: 'C:\\korea_rebs', c: 'var(--b5)', cs: 'var(--b5-soft)' },
+    { id: 'py', name: 'Python', sub: '분석 스크립트', c: 'var(--b4)', cs: 'var(--b4-soft)' },
+    { id: 'db', name: 'DB', sub: 'koreareb.db', c: 'var(--b3)', cs: 'var(--b3-soft)' }
+  ];
+  var PHASES = ['로그인', '자료 준비', '전처리', '위험도 산출', 'DB 저장', '점검 대상 선정', '점검·결과 저장', '집계·보고'];
+  var STEPS = [
+    { id: 's1', phase: 0, lane: 'user', name: '로그인', sub: '아이디 · 비밀번호', desc: '담당자가 아이디와 비밀번호를 넣는다.' },
+    { id: 's2', phase: 0, lane: 'app', name: '로그인 화면', sub: 'ViewLogin.cs', desc: '저장된 비밀번호 해시(PBKDF2)와 비교한다. 5회 틀리면 계정을 잠그고, 정지·잠금 계정은 막는다. 예전 Base64 비밀번호는 이때 해시로 바꾼다.', files: ['ViewLogin.cs', 'PasswordHasher.cs'] },
+    { id: 's3', phase: 0, lane: 'db', name: '계정 · 접속 이력', sub: 'tb_member · tb_connect_log', desc: '계정 상태와 실패 횟수를 읽고 쓴다. 로그인에 성공하면 접속 이력을 남긴다.', files: ['tb_member', 'tb_connect_log'] },
+    { id: 's4', phase: 1, lane: 'user', name: '원본 CSV 선택', sub: '청약 신청자 자료', desc: '데이터 전처리 화면에서 청약 신청자 자료(EUC-KR CSV)를 고른다.' },
+    { id: 's5', phase: 1, lane: 'app', name: '데이터 전처리', sub: 'ViewPrepare.cs', desc: '지역 코드와 세대 관계 오류를 검사하고, 오류 팝업에서 고치거나 뺀다. 통과한 행을 작업 폴더에 쓴다.', files: ['ViewPrepare.cs', 'ViewErrorPopup.cs'] },
+    { id: 's6', phase: 1, lane: 'files', name: 'dataframe.csv', sub: '검사를 통과한 행', desc: '전처리 스크립트가 읽는 입력 파일.', files: ['C:\\korea_rebs\\dataframe.csv'] },
+    { id: 's7', phase: 2, lane: 'py', name: 'Preparation.py', sub: '파생 변수 계산', desc: '모델에 넣을 파생 변수를 계산한다.', files: ['korea_rebs/Preparation.py'] },
+    { id: 's8', phase: 2, lane: 'files', name: 'dataframe_add.csv', sub: '전처리 결과', desc: '위험도 산출의 입력. 원본 폴더에도 "원본이름_전처리N.csv" 로 백업한다.', files: ['C:\\korea_rebs\\dataframe_add.csv'] },
+    { id: 's9', phase: 3, lane: 'py', name: 'Launcher.py', sub: 'RF · XGBoost', desc: '정답이 있는 학습 자료 dataframe_train.csv 로 랜덤 포레스트와 XGBoost 를 학습하고, 신청자별 부정청약·위장전입·불법매매 확률을 계산한다.', files: ['korea_rebs/Launcher.py', 'dataframe_train.csv'] },
+    { id: 's10', phase: 3, lane: 'files', name: 'Result.csv', sub: '확률 + 상위 %', desc: '위험 3종 × 모델 2종의 확률과 상위 50·25·10% 표시.', files: ['C:\\korea_rebs\\Result.csv'] },
+    { id: 's11', phase: 3, lane: 'app', name: '위험도 산출', sub: 'ViewDangerous.cs', desc: '결과 목록을 보여 주고 신청자 키 data_no 를 만든다. "산출결과 전송" 을 누르면 DB 저장 단계로 넘어간다.', files: ['ViewDangerous.cs'] },
+    { id: 's12', phase: 4, lane: 'files', name: 'SendResult.csv', sub: '전송할 행', desc: 'DB 에 올릴 파일. 원본 폴더에 "원본이름_위험도산출N.csv" 로 백업한다.', files: ['C:\\korea_rebs\\SendResult.csv'] },
+    { id: 's13', phase: 4, lane: 'py', name: 'SendInsertUpdate.py', sub: 'data_no 기준 UPSERT', desc: '같은 신청자는 값만 바꾸고 새 신청자는 추가한다. 앱이 자기 DB 경로를 인자로 넘긴다.', files: ['korea_rebs/SendInsertUpdate.py'] },
+    { id: 's14', phase: 4, lane: 'db', name: 'tb_riskdata', sub: '신청자별 위험도', desc: '신청자 1명이 1행(175개 컬럼). change_date 에 업로드일시가 들어간다.', files: ['tb_riskdata'] },
+    { id: 's15', phase: 5, lane: 'app', name: '단지 선정', sub: 'ViewDanji.cs', desc: '기간·지역·모델·상위 % 조건으로 단지별 평균 위험도 순위를 낸다.', files: ['ViewDanji.cs'] },
+    { id: 's16', phase: 5, lane: 'user', name: '점검 단지 결정', sub: '엑셀 · 출력', desc: '순위를 보고 점검할 단지를 정한다.' },
+    { id: 's17', phase: 6, lane: 'user', name: '현장 점검', sub: '서류 · 현장 확인', desc: '대상 신청자의 서류와 거주 사실 등을 확인한다.' },
+    { id: 's18', phase: 6, lane: 'app', name: '실시 · 등록', sub: 'ViewExecute.cs', desc: '대상 신청자를 조회해 점검 여부와 부정청약 판정을 입력하고 "결과 저장" 을 누른다.', files: ['ViewExecute.cs'] },
+    { id: 's19', phase: 6, lane: 'db', name: '점검 결과 저장', sub: 'tb_riskdata 7개 컬럼', desc: '점검 여부, 판정, 유형, 점검여부(N/Z/Y)만 UPDATE 한다. 업로드일시(change_date)는 바꾸지 않는다.', files: ['tb_riskdata'] },
+    { id: 's20', phase: 7, lane: 'app', name: '대시보드 · 통계', sub: '지도 · 순위 · 그래프', desc: '대시보드는 최근 업로드일 기준 1년, 통계는 모집공고일 기준으로 집계한다.', files: ['ViewDashBoard.cs', 'ViewStatisticLocal.cs', 'ViewStatisticDanji.cs'] },
+    { id: 's21', phase: 7, lane: 'user', name: '결과 보고', sub: '엑셀 · 이미지 저장', desc: '표와 지도를 파일로 저장해 보고한다.' },
+    { id: 's22', phase: 7, lane: 'db', name: '이력 기록', sub: 'tb_change_log · tb_down_log', desc: '전처리 실행, 위험도 산출, 결과 저장은 변경 이력에, 엑셀·이미지 저장은 다운로드 이력에 남는다.', files: ['tb_change_log', 'tb_down_log'] }
+  ];
+  var LINKS = [
+    ['s1', 's2'], ['s2', 's3', '확인 · 기록'], ['s2', 's5', '메뉴'],
+    ['s4', 's5'], ['s5', 's6', '쓰기'], ['s6', 's7', '실행'], ['s7', 's8'],
+    ['s8', 's9', '실행'], ['s9', 's10'], ['s10', 's11', '읽기'],
+    ['s11', 's12', '전송'], ['s12', 's13', '실행'], ['s13', 's14', 'UPSERT'],
+    ['s14', 's15', '조회'], ['s15', 's16'], ['s16', 's17'], ['s17', 's18', '입력'], ['s18', 's19', 'UPDATE'],
+    ['s19', 's20', '집계'], ['s20', 's21'], ['s20', 's22', '기록', 'dashed']
+  ];
+  var F = { labelW: 104, laneW: 172, headH: 54, rowH: 104, nodeW: 150, nodeH: 70 };
+  var flow = { selected: null, rendered: false };
+  function laneOf(id) { for (var i = 0; i < LANES.length; i++) if (LANES[i].id === id) return i; return 0; }
+  function stepById(id) { for (var i = 0; i < STEPS.length; i++) if (STEPS[i].id === id) return STEPS[i]; return null; }
+  function stepNo(st) { return STEPS.indexOf(st) + 1; }
+  function stepBox(st) {
+    return { x: F.labelW + laneOf(st.lane) * F.laneW + (F.laneW - F.nodeW) / 2, y: F.headH + st.phase * F.rowH + (F.rowH - F.nodeH) / 2, w: F.nodeW, h: F.nodeH };
+  }
+  function roundedPath(pts, r) {
+    var d = 'M' + pts[0][0] + ' ' + pts[0][1];
+    for (var i = 1; i < pts.length - 1; i++) {
+      var p0 = pts[i - 1], p1 = pts[i], p2 = pts[i + 1];
+      var l1 = Math.hypot(p1[0] - p0[0], p1[1] - p0[1]), l2 = Math.hypot(p2[0] - p1[0], p2[1] - p1[1]);
+      var rr = Math.min(r, l1 / 2, l2 / 2);
+      var ax = p1[0] - (p1[0] - p0[0]) / l1 * rr, ay = p1[1] - (p1[1] - p0[1]) / l1 * rr;
+      var bx = p1[0] + (p2[0] - p1[0]) / l2 * rr, by = p1[1] + (p2[1] - p1[1]) / l2 * rr;
+      d += ' L' + ax + ' ' + ay + ' Q' + p1[0] + ' ' + p1[1] + ' ' + bx + ' ' + by;
+    }
+    var last = pts[pts.length - 1];
+    return d + ' L' + last[0] + ' ' + last[1];
+  }
+  function renderFlow() {
+    var W = F.labelW + LANES.length * F.laneW, H = F.headH + PHASES.length * F.rowH + 8;
+    var s = $('#flow-svg');
+    s.textContent = '';
+    s.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+    s.setAttribute('width', W);
+    s.setAttribute('height', H);
+    var defs = svg('defs', null, s);
+    [['arrow', 'arrow-head'], ['arrow-hl', 'arrow-head hl']].forEach(function (m) {
+      var mk = svg('marker', { id: m[0], viewBox: '0 0 10 10', refX: 10, refY: 5, markerWidth: 9, markerHeight: 9, markerUnits: 'userSpaceOnUse', orient: 'auto-start-reverse' }, defs);
+      svg('path', { d: 'M0 0 L10 5 L0 10 z', 'class': m[1] }, mk);
+    });
+    LANES.forEach(function (l, i) {
+      var x = F.labelW + i * F.laneW;
+      svg('rect', { 'class': 'lane-bg' + (i % 2 ? ' alt' : ''), x: x + 3, y: 4, width: F.laneW - 6, height: H - 8, rx: 10 }, s);
+      var head = svg('g', { transform: 'translate(' + (x + F.laneW / 2) + ' 0)' }, s);
+      head.style.setProperty('--c', l.c);
+      var nameW = textWidth(l.name, '600 13px ' + FONT);
+      svg('circle', { 'class': 'lane-dot', cx: -nameW / 2 - 9, cy: 22, r: 4.5 }, head);
+      var t1 = svg('text', { 'class': 'lane-name', y: 22, 'text-anchor': 'middle', 'dominant-baseline': 'central' }, head);
+      t1.textContent = l.name;
+      var t2 = svg('text', { 'class': 'lane-sub', y: 39, 'text-anchor': 'middle', 'dominant-baseline': 'central' }, head);
+      t2.textContent = l.sub;
+    });
+    PHASES.forEach(function (p, i) {
+      var y = F.headH + i * F.rowH;
+      svg('line', { 'class': 'row-line', x1: 8, x2: W - 8, y1: y, y2: y }, s);
+      var lines = wrapText(p, '600 12.5px ' + FONT, F.labelW - 22, 2);
+      lines.forEach(function (ln, j) {
+        var t = svg('text', { 'class': 'phase', x: 14, y: y + F.rowH / 2 + (j - (lines.length - 1) / 2) * 17, 'dominant-baseline': 'central' }, s);
+        t.textContent = ln;
+      });
+    });
+    var gl = svg('g', null, s), glab = svg('g', null, s), gn = svg('g', null, s);
+    LINKS.forEach(function (lk) { drawFlowLink(gl, glab, stepById(lk[0]), stepById(lk[1]), lk[2], lk[3]); });
+    STEPS.forEach(function (st) { drawStep(gn, st); });
+    flow.rendered = true;
+    if (flow.selected) highlightFlow();
+  }
+  function drawFlowLink(g, glab, A, B, label, style) {
+    var a = stepBox(A), b = stepBox(B), pts;
+    if (A.phase === B.phase) {
+      var y = a.y + a.h / 2;
+      pts = laneOf(B.lane) > laneOf(A.lane) ? [[a.x + a.w, y], [b.x, y]] : [[a.x, y], [b.x + b.w, y]];
+    } else if (A.lane === B.lane) {
+      var x = a.x + a.w / 2;
+      pts = [[x, a.y + a.h], [x, b.y]];
+    } else {
+      var ax = a.x + a.w / 2, bx = b.x + b.w / 2, midY = (a.y + a.h + b.y) / 2;
+      pts = [[ax, a.y + a.h], [ax, midY], [bx, midY], [bx, b.y]];
+    }
+    svg('path', { 'class': 'flink' + (style === 'dashed' ? ' dashed' : ''), d: roundedPath(pts, 10), 'marker-end': 'url(#arrow)', 'data-from': A.id, 'data-to': B.id }, g);
+    if (!label) return;
+    var best = 0, bi = 0;
+    for (var i = 0; i < pts.length - 1; i++) {
+      var len = Math.hypot(pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1]);
+      if (len > best) { best = len; bi = i; }
+    }
+    var tw = textWidth(label, '600 11px ' + FONT) + 10;
+    var vertical = pts[bi][0] === pts[bi + 1][0];
+    // 붙은 칸 사이처럼 선이 짧으면 글자가 상자를 가리므로 이름표를 생략한다 (설명은 옆 패널에 있다)
+    if (best < (vertical ? 24 : tw + 12)) return;
+    var mx = (pts[bi][0] + pts[bi + 1][0]) / 2, my = (pts[bi][1] + pts[bi + 1][1]) / 2;
+    var lg = svg('g',{ 'class': 'flabel', 'data-from': A.id, 'data-to': B.id, transform: 'translate(' + mx + ' ' + my + ')' }, glab);
+    svg('rect', { x: -tw / 2, y: -9, width: tw, height: 18, rx: 9 }, lg);
+    var t = svg('text', { 'text-anchor': 'middle', 'dominant-baseline': 'central', y: 0.5 }, lg);
+    t.textContent = label;
+  }
+  function drawStep(g, st) {
+    var b = stepBox(st), lane = LANES[laneOf(st.lane)], no = stepNo(st);
+    var node = svg('g', { 'class': 'fnode' + (flow.selected === st.id ? ' selected' : ''), transform: 'translate(' + b.x + ' ' + b.y + ')', tabindex: '0', role: 'button', 'data-step': st.id, 'aria-label': no + '단계 ' + st.name + ', ' + lane.name + ', ' + PHASES[st.phase] }, g);
+    node.style.setProperty('--c', lane.c);
+    svg('rect', { 'class': 'ring', x: -4, y: -4, width: b.w + 8, height: b.h + 8, rx: 13 }, node);
+    svg('rect', { 'class': 'box', width: b.w, height: b.h, rx: 10 }, node);
+    svg('circle', { 'class': 'num', cx: 17, cy: 18, r: 10 }, node);
+    var nt = svg('text', { 'class': 'num-t', x: 17, y: 18.5, 'text-anchor': 'middle', 'dominant-baseline': 'central' }, node);
+    nt.textContent = no;
+    var lines = wrapText(st.name, '600 13px ' + FONT, b.w - 33 - 8, 2);
+    lines.forEach(function (ln, i) {
+      var t = svg('text', { 'class': 'title', x: 33, y: lines.length === 1 ? 18.5 : 12 + i * 16, 'dominant-baseline': 'central' }, node);
+      t.textContent = ln;
+    });
+    var sub = svg('text', { 'class': 'sub', x: 12, y: 53, 'dominant-baseline': 'central' }, node);
+    sub.textContent = truncate(st.sub, '400 11px ' + MONO, b.w - 22);
+  }
+  function highlightFlow() {
+    var id = flow.selected;
+    $all('#flow-svg .fnode').forEach(function (n) { n.classList.toggle('selected', n.getAttribute('data-step') === id); });
+    $all('#flow-svg .flink').forEach(function (p) {
+      var on = !!id && (p.getAttribute('data-from') === id || p.getAttribute('data-to') === id);
+      p.classList.toggle('hl', on);
+      p.classList.toggle('dim', !!id && !on);
+      p.setAttribute('marker-end', on ? 'url(#arrow-hl)' : 'url(#arrow)');
+    });
+    $all('#flow-svg .flabel').forEach(function (l) {
+      var on = !!id && (l.getAttribute('data-from') === id || l.getAttribute('data-to') === id);
+      l.classList.toggle('hl', on);
+      l.classList.toggle('dim', !!id && !on);
+    });
+  }
+  function selectStep(id, fromKeyboard) {
+    flow.selected = flow.selected === id && !fromKeyboard ? null : id;
+    highlightFlow();
+    renderFlowPanel();
+    if (fromKeyboard) {
+      $all('#flow-svg .fnode').forEach(function (n) { if (n.getAttribute('data-step') === id) n.focus({ preventScroll: true }); });
+    }
+  }
+  function laneChip(lane) { return h('span', { 'class': 'chip', style: '--c: ' + lane.c + '; --cs: ' + lane.cs, text: lane.name }); }
+  function stepButton(st, extraClass) {
+    var lane = LANES[laneOf(st.lane)];
+    return h('button', { type: 'button', 'class': 'list-btn' + (extraClass ? ' ' + extraClass : ''), 'data-step-go': st.id },
+      [h('span', { 'class': 'step-no', style: '--c: ' + lane.c, text: String(stepNo(st)) }), st.name]);
+  }
+  function renderFlowPanel() {
+    var box = $('#flow-detail');
+    box.textContent = '';
+    var st = stepById(flow.selected);
+    if (!st) {
+      box.append(h('h2', { text: '신청자 자료가 점검 결과가 되기까지' }),
+        h('p', { 'class': 'desc', text: '로그인부터 집계까지 ' + STEPS.length + '단계입니다. 위에서 아래로 진행하고, 가로줄은 단계, 세로줄은 일을 맡는 쪽입니다. 단계를 누르면 앞뒤 단계와 쓰는 파일·테이블이 보입니다.' }));
+    } else {
+      var lane = LANES[laneOf(st.lane)];
+      box.append(h('p', { 'class': 'panel-eyebrow', text: stepNo(st) + '단계 · ' + PHASES[st.phase] }), h('h2', { text: st.name }), h('p', { 'class': 'meta' }, laneChip(lane)), h('p', { 'class': 'desc', text: st.desc }));
+      var prev = LINKS.filter(function (l) { return l[1] === st.id; }).map(function (l) { return stepById(l[0]); });
+      var next = LINKS.filter(function (l) { return l[0] === st.id; }).map(function (l) { return stepById(l[1]); });
+      if (prev.length) { box.append(h('h3', { text: '앞 단계' }), h('div', { 'class': 'links-row' }, prev.map(function (p) { return stepButton(p); }))); }
+      if (next.length) { box.append(h('h3', { text: '다음 단계' }), h('div', { 'class': 'links-row' }, next.map(function (p) { return stepButton(p); }))); }
+      if (st.files && st.files.length) {
+        box.append(h('h3', { text: '파일 · 테이블' }));
+        var ul = h('ul', { 'class': 'files' });
+        st.files.forEach(function (f) { ul.append(h('li', null, h('code', { text: f }))); });
+        box.append(ul);
+      }
+    }
+    var ol = $('#flow-steps');
+    ol.textContent = '';
+    STEPS.forEach(function (s2) {
+      var lane = LANES[laneOf(s2.lane)];
+      var btn = stepButton(s2, s2.id === flow.selected ? 'current' : '');
+      btn.append(h('span', { 'class': 'step-lane', text: lane.name }));
+      ol.append(h('li', null, btn));
+    });
+  }
+  function renderFlowLegend() {
+    var box = $('#flow-legend');
+    box.textContent = '';
+    LANES.forEach(function (l) { box.append(h('span', { 'class': 'item' }, [h('span', { 'class': 'box-swatch', style: '--c: ' + l.c }), l.name])); });
+    box.append(h('span', { 'class': 'item' }, [h('span', { 'class': 'swatch', style: '--c: var(--flow-line)' }), '작업 순서']));
+    box.append(h('span', { 'class': 'item' }, [h('span', { 'class': 'swatch dashed' }), '여러 단계에서 기록']));
+  }
+  $('#flow-svg').addEventListener('click', function (e) {
+    var n = e.target.closest('.fnode');
+    if (n) selectStep(n.getAttribute('data-step'), false);
+    else if (flow.selected) { flow.selected = null; highlightFlow(); renderFlowPanel(); }
+  });
+  $('#flow-svg').addEventListener('keydown', function (e) {
+    var n = e.target.closest ? e.target.closest('.fnode') : null;
+    if (n && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); selectStep(n.getAttribute('data-step'), true); }
+  });
+  $('#flow-panel').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-step-go]');
+    if (!b) return;
+    var id = b.getAttribute('data-step-go');
+    flow.selected = id;
+    highlightFlow();
+    renderFlowPanel();
+    $all('#flow-svg .fnode').forEach(function (n) {
+      if (n.getAttribute('data-step') === id && n.scrollIntoView) n.scrollIntoView({ block: 'nearest', inline: 'center', behavior: reduceMotion ? 'auto' : 'smooth' });
+    });
+  });
+
+  // =====================================================================
+  // 보기 탭, 시작
+  // =====================================================================
+  var tabs = $all('.tab');
+  function showView(id) {
+    tabs.forEach(function (t) {
+      var on = t.getAttribute('data-view') === id;
+      t.setAttribute('aria-selected', on ? 'true' : 'false');
+      t.tabIndex = on ? 0 : -1;
+      $('#view-' + t.getAttribute('data-view')).hidden = !on;
+    });
+    if (id === 'map' && !map.fitted) { renderMap(); fit(false); }
+    if (id === 'flow' && !flow.rendered) { renderFlow(); renderFlowPanel(); renderFlowLegend(); }
+  }
+  tabs.forEach(function (t) {
+    t.addEventListener('click', function () {
+      var id = t.getAttribute('data-view');
+      showView(id);
+      try { history.replaceState(null, '', '#' + id); } catch (err) { /* 무시 */ }
+    });
+    t.addEventListener('keydown', function (e) {
+      if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+      e.preventDefault();
+      var i = tabs.indexOf(t), j = (i + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length;
+      tabs[j].focus(); tabs[j].click();
+    });
+  });
+
+  editor.value = DEFAULT_OUTLINE;
+  loadRoot(parseOutline(DEFAULT_OUTLINE).root, false);
+  showView(location.hash === '#flow' ? 'flow' : 'map');
+  renderMap();
+  showDetail(map.root);
+  if (!map.fitted) fit(false);
+  setStatus('노드 ' + map.count + '개', false);
+
+  // 웹 글꼴이 늦게 오면 글자 폭이 바뀌므로 다시 그린다
+  function relayout() {
+    if (!$('#view-map').hidden) { renderMap(); if (!map.touched) fit(false); }
+    else map.fitted = false;
+    if (flow.rendered) renderFlow();
+  }
+  if (document.fonts) {
+    if (document.fonts.ready) document.fonts.ready.then(relayout);
+    if (document.fonts.addEventListener) document.fonts.addEventListener('loadingdone', relayout);
+  }
+  var resizeTimer = 0;
+  window.addEventListener('resize', function () {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(function () { if (!$('#view-map').hidden && !map.touched) fit(false); }, 150);
+  });
+})();
+</script>
+<!-- page:end -->
+</body>
+</html>

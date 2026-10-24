@@ -124,7 +124,6 @@ public class ViewExecute : MonoBehaviour
 
     public DataTable OpenTable;
     public DataTable CheckTable;
-    public DataTable listTable;
     public DataTable resultTable;
 
     bool[] _dropdownType = new bool[4];//검색구분
@@ -271,6 +270,32 @@ public class ViewExecute : MonoBehaviour
     [SerializeField]
     public ExecuteData EXD = new ExecuteData();
 
+    // ---------------------------------------------------------------------------------------
+    // 대용량 목록 처리용 캐시
+    // 이전에는 페이지를 넘기거나 체크박스를 누를 때마다 전체 DataTable 을 복사(ToTable)하거나
+    // DataTable.Select 로 전체를 다시 훑어서, 수만 건이면 클릭마다 화면이 멈췄다.
+    // ---------------------------------------------------------------------------------------
+
+    // data_no → 행 (체크박스 클릭 시 O(1) 조회)
+    private readonly Dictionary<string, DataRow> rowByDataNo = new Dictionary<string, DataRow>();
+
+    // 선택된 행 (isSelect 컬럼과 항상 같은 상태로 유지)
+    private readonly HashSet<DataRow> selectedRows = new HashSet<DataRow>();
+
+    // 현재 정렬/필터가 적용된 행 목록. 정렬·필터·데이터가 바뀔 때만 다시 만든다(페이지 이동 시에는 재사용).
+    private DataRow[] viewRows = new DataRow[0];
+    private bool viewDirty = true;
+    private bool countsDirty = true;
+
+    // 엑셀 다운로드/결과 저장 CSV 의 컬럼은 ServerManager 가 tb_riskdata 의 실제 컬럼 순서로 정한다 (columns 에 null 을 넘김).
+    // colname 은 public 이라 씬에 저장된 값이 쓰이는데 씬마다 다르다(Main.unity 는 data_no 로 시작하는 172개).
+    // 그래서 colname 으로 컬럼 목록을 만들면 korcolname(172개 헤더)과 한 칸씩 어긋난다.
+
+    // 결과 저장을 예전처럼 CSV + 파이썬(SaveResult.py)으로 하려면 인스펙터에서 켠다.
+    // 기본값(false)은 DB 에 직접 한 트랜잭션으로 저장한다.
+    [SerializeField]
+    private bool useLegacyPythonSave = false;
+
 
     private void Awake()
     {
@@ -413,7 +438,17 @@ public class ViewExecute : MonoBehaviour
     {
         mainManager.viewLoading.Open();
 
-        await Delete_Data();
+        try
+        {
+            await Delete_Data();
+        }
+        catch (Exception e)
+        {
+            Debug.LogException(e);
+            mainManager.viewLoading.Close();
+            ShowErrorPopup("삭제 중 오류가 발생했습니다.\n" + e.Message);
+            return;
+        }
 
         //string names = Path.GetFileNameWithoutExtension(_path);
 
@@ -453,27 +488,201 @@ public class ViewExecute : MonoBehaviour
         
     }
 
-    //삭제
+    //삭제: 선택한 행을 한 트랜잭션으로 지운다 (이전: 행마다 연결 열기 + 자동 커밋 + Task.Delay(1))
     public async Task Delete_Data()
     {
-        // 
+        List<string> keys = new List<string>();
 
-        DataRow[] deleteRows = resultTable.Select("isSelect = true");
-
-        Debug.Log("Delete_Data Count : " + deleteRows.Length);
-
-
-        if (deleteRows.Length > 0)
+        foreach (DataRow row in GetSelectedRowsInOrder())
         {
-            foreach (DataRow rows in deleteRows)
+            keys.Add(row["data_no"].ToString());
+        }
+
+        Debug.Log("Delete_Data Count : " + keys.Count);
+
+        if (keys.Count > 0)
+        {
+            await serverManager.DeleteRiskDataBatchAsync("tb_riskdata", "data_no", keys);
+        }
+    }
+
+    private void ShowErrorPopup(string message)
+    {
+        CommonErrorPopup commonErrorPopup = Instantiate(mainManager.commonErrorPopup, mainManager.contents);
+
+        commonErrorPopup.ShowPopup_OneButton(
+            message,
+            "확인",
+            () =>
             {
-                //Debug.Log("rows.0 : " + rows["data_no"].ToString());
+                commonErrorPopup.CloseDestroy();
+            }
+        );
+    }
 
-                await Task.Delay(1);
+    // ---------------------------------------------------------------------------------------
+    // 행 인덱스 / 선택 / 정렬·필터 캐시
+    // ---------------------------------------------------------------------------------------
 
-                serverManager.DeleteRiskData("tb_riskdata", "data_no", rows["data_no"].ToString());
+    private static bool IsTrueText(object value)
+    {
+        return value != null && value != DBNull.Value && string.Equals(value.ToString(), "true", StringComparison.OrdinalIgnoreCase);
+    }
+
+    // resultTable 을 새로 받은 직후 한 번 호출한다.
+    private void OnResultTableChanged()
+    {
+        rowByDataNo.Clear();
+        selectedRows.Clear();
+
+        if (resultTable != null)
+        {
+            foreach (DataRow row in resultTable.Rows)
+            {
+                string key = row["data_no"].ToString();
+
+                if (!rowByDataNo.ContainsKey(key))
+                {
+                    rowByDataNo.Add(key, row);
+                }
+
+                if (IsTrueText(row["isSelect"]))
+                {
+                    selectedRows.Add(row);
+                }
             }
         }
+
+        MarkViewDirty();
+    }
+
+    // 정렬/필터/값이 바뀌었을 때 호출 → 다음 UpdateView 에서 목록과 개수를 다시 계산
+    private void MarkViewDirty()
+    {
+        viewDirty = true;
+        countsDirty = true;
+    }
+
+    public DataRow FindRow(string dataNo)
+    {
+        DataRow row;
+        return dataNo != null && rowByDataNo.TryGetValue(dataNo, out row) ? row : null;
+    }
+
+    // Item_Check 의 체크박스가 호출한다
+    public void SetRowSelected(string dataNo, bool selected)
+    {
+        DataRow row = FindRow(dataNo);
+
+        if (row == null)
+        {
+            return;
+        }
+
+        row["isSelect"] = selected.ToString();
+
+        if (selected)
+        {
+            selectedRows.Add(row);
+        }
+        else
+        {
+            selectedRows.Remove(row);
+        }
+    }
+
+    // 선택된 행을 테이블 순서대로
+    private List<DataRow> GetSelectedRowsInOrder()
+    {
+        List<DataRow> rows = new List<DataRow>(selectedRows.Count);
+
+        if (resultTable == null || selectedRows.Count == 0)
+        {
+            return rows;
+        }
+
+        foreach (DataRow row in resultTable.Rows)
+        {
+            if (selectedRows.Contains(row))
+            {
+                rows.Add(row);
+            }
+        }
+
+        return rows;
+    }
+
+    // 정렬 기준 컬럼이 결과에 없으면(다른 화면용 버튼 설정 등) 예외 대신 NO 순으로 보여 준다
+    private string SafeSortExpression()
+    {
+        if (resultTable == null)
+        {
+            return "";
+        }
+
+        string fallback = resultTable.Columns.Contains("NO") ? "NO ASC" : "";
+
+        if (string.IsNullOrEmpty(SortTarget))
+        {
+            return fallback;
+        }
+
+        string column = SortTarget.Trim();
+        int space = column.LastIndexOf(' ');
+
+        if (space > 0)
+        {
+            string direction = column.Substring(space + 1).ToUpperInvariant();
+
+            if (direction == "ASC" || direction == "DESC")
+            {
+                column = column.Substring(0, space).Trim();
+            }
+        }
+
+        if (!resultTable.Columns.Contains(column))
+        {
+            Debug.LogWarning("[ViewExecute] 정렬 컬럼 없음: " + SortTarget + " → " + fallback);
+            return fallback;
+        }
+
+        return SortTarget;
+    }
+
+    // 현재 정렬/점검여부 필터가 적용된 행. 바뀐 게 없으면 이전 결과를 그대로 쓴다.
+    private DataRow[] GetViewRows()
+    {
+        if (resultTable == null)
+        {
+            return new DataRow[0];
+        }
+
+        if (viewDirty || viewRows == null)
+        {
+            string filter = "";
+
+            // 조회가 실패하면 컬럼 없는 빈 테이블이 온다. 그때 필터식을 걸면 예외가 나므로 건너뛴다.
+            if (resultTable.Columns.Contains("점검여부"))
+            {
+                switch (listMode)
+                {
+                    case 1: filter = "점검여부 = 'Z'"; break;
+                    case 2: filter = "점검여부 = 'N'"; break;
+                    case 3: filter = "점검여부 = 'Y'"; break;
+                }
+            }
+
+            // DataTable.Select(필터, 정렬) 은 행을 복사하지 않고 참조 배열만 돌려준다 (이전: DefaultView.ToTable 로 전체 복사)
+            viewRows = resultTable.Select(filter, SafeSortExpression());
+            viewDirty = false;
+        }
+
+        return viewRows;
+    }
+
+    private int GetMaxPage()
+    {
+        return Mathf.Max(1, Mathf.CeilToInt((float)GetViewRows().Length / Mathf.Max(1, itemsPerPage)));
     }
 
     public void SearchButtonActive(bool check)
@@ -485,9 +694,7 @@ public class ViewExecute : MonoBehaviour
 
     public void Action_SaveResult()
     {
-        var vcount = resultTable.Select("isSelect = True");
-
-        if (vcount.Length > 0)
+        if (resultTable != null && selectedRows.Count > 0)
         {
             CommonPopup commonPopup = Instantiate(mainManager.commonPopup, mainManager.contents);
 
@@ -540,11 +747,10 @@ public class ViewExecute : MonoBehaviour
 
         // 선택한 행만 가져온다
 
-        DataRow[] rows = resultTable.Select("isSelect = True");
-        Debug.Log("selectCheck rows Count : " + rows.Length);
-        string cellValue = "";
+        List<DataRow> rows = GetSelectedRowsInOrder();
+        Debug.Log("selectCheck rows Count : " + rows.Count);
 
-        if (rows.Length > 0)
+        if (rows.Count > 0)
         {
             foreach (DataRow dataRow in rows)
             {
@@ -607,7 +813,8 @@ public class ViewExecute : MonoBehaviour
 
         // UnSelect();
 
-        // 리스트 새로 그리기
+        // 리스트 새로 그리기 (점검여부 값이 바뀌었으니 필터/개수 다시 계산)
+        MarkViewDirty();
 
         UpdateUI();
 
@@ -701,9 +908,9 @@ public class ViewExecute : MonoBehaviour
         // 점검 결과를 저장한다
         Debug.Log("Set_DFCheckResult");
 
-        DataRow[] rows = resultTable.Select("isSelect = True");
+        List<DataRow> rows = GetSelectedRowsInOrder();
 
-        if (rows.Length > 0)
+        if (rows.Count > 0)
         {
             foreach (DataRow dataRow in rows)
             {
@@ -809,7 +1016,9 @@ public class ViewExecute : MonoBehaviour
 
         //UnSelect();
 
-        // 리스트 새로 그리기
+        // 리스트 새로 그리기 (부정청약결과 값이 바뀌었으니 정렬 결과 다시 계산)
+        MarkViewDirty();
+
         UpdateUI();
         
         // 전부 통과면 활성화 중에 적발이 있으면 비활성화
@@ -884,45 +1093,11 @@ public class ViewExecute : MonoBehaviour
             return;
         }
 
-        //string[] cols = new string[CheckTable.Columns.Count];
-
-        string[] fileTypes = new string[] { "CSV Files", "csv" };
-
         StandaloneFileBrowser.SaveFilePanelAsync("엑셀 다운로드", "", "", "csv", (string path) =>
         {
             if (!string.IsNullOrEmpty(path))
             {
-                // 파일 저장 로직을 구현하세요
-                // 예를 들어, 파일을 생성하고 내용을 저장할 수 있습니다.
-                // File.WriteAllText(path, "Hello, World!");
-                DataTable saveTable = resultTable.Copy();
-
-                string[] columnsToRemove = { "isSelect", "NO", "data_idx", "create_date", "change_date"}; // 삭제할 칼럼들의 이름 배열
-
-                foreach (string columnName in columnsToRemove)
-                {
-                    if (saveTable.Columns.Contains(columnName))
-                    {
-                        saveTable.Columns.Remove(columnName);
-                    }
-                }
-
-                SaveDataTableToCsv(saveTable, path, korcolname);
-
-
-                //엑셀 이력 추가
-                Debug.Log("File saved at: " + path);
-
-                if (!string.IsNullOrEmpty(_path))
-                {
-                    //string originalFileName = Path.GetFileNameWithoutExtension(_path); // 기존 파일명 가져오기
-                    //mainManager.DownloadLodInsert(MenuName,  $"{selectMenu.dateText.Canlendar.text} {originalFileName} 엑셀다운로드");
-
-                    string names = Path.GetFileNameWithoutExtension(path);
-                    mainManager.DownloadLodInsert(MenuName, $"{names} 엑셀다운로드");
-
-                }
-
+                ExportResultTable(path);
             }
             else
             {
@@ -931,63 +1106,104 @@ public class ViewExecute : MonoBehaviour
         });
     }
 
+    // 현재 조회 결과 전체를 원본 172개 컬럼(korcolname)으로 내보낸다.
+    // 화면 목록은 필요한 컬럼만 들고 있으므로 원본 값은 DB 에서 한 행씩 읽어 바로 파일에 쓰고(메모리에 전부 올리지 않음),
+    // 화면에서 바꾼(아직 저장하지 않은) 점검여부/판정 값은 덮어쓴다. 이전 엑셀 결과와 같은 내용이다.
+    private async void ExportResultTable(string path)
+    {
+        if (resultTable == null)
+        {
+            return;
+        }
+
+        List<string> keys = new List<string>(resultTable.Rows.Count);
+
+        foreach (DataRow row in resultTable.Rows)
+        {
+            keys.Add(row["data_no"].ToString());
+        }
+
+        Dictionary<string, object[]> overlay = BuildEditOverlay(resultTable.AsEnumerable());
+
+        mainManager.viewLoading.Open();
+        mainManager.loadMsg.text = "엑셀 파일 저장 중...";
+
+        int written;
+
+        try
+        {
+            written = await serverManager.ExportRiskRowsToCsvAsync(path, keys, null, korcolname, setNames, overlay);
+        }
+        catch (Exception e)
+        {
+            Debug.LogException(e);
+            mainManager.loadMsg.text = "";
+            mainManager.viewLoading.Close();
+            ShowErrorPopup("엑셀 파일을 저장하지 못했습니다.\n" + e.Message);
+            return;
+        }
+
+        mainManager.loadMsg.text = "";
+        mainManager.viewLoading.Close();
+
+        //엑셀 이력 추가
+        Debug.Log("File saved at: " + path + " (" + written + " rows)");
+
+        if (!string.IsNullOrEmpty(_path))
+        {
+            string names = Path.GetFileNameWithoutExtension(path);
+            mainManager.DownloadLodInsert(MenuName, $"{names} 엑셀다운로드");
+        }
+    }
+
+    // 화면에서 바뀔 수 있는 7개 컬럼(setNames) 값을 data_no 별로 모아 둔다.
+    // 백그라운드 스레드가 DataRow 를 직접 읽지 않도록 메인 스레드에서 미리 복사한다.
+    private Dictionary<string, object[]> BuildEditOverlay(IEnumerable<DataRow> rows)
+    {
+        Dictionary<string, object[]> overlay = new Dictionary<string, object[]>();
+
+        foreach (DataRow row in rows)
+        {
+            string key = row["data_no"].ToString();
+
+            if (overlay.ContainsKey(key))
+            {
+                continue;
+            }
+
+            object[] values = new object[setNames.Length];
+
+            for (int i = 0; i < setNames.Length; i++)
+            {
+                values[i] = row[setNames[i]];
+            }
+
+            overlay.Add(key, values);
+        }
+
+        return overlay;
+    }
 
     public void SaveDataTableToCsv(DataTable dataTable, string filePath, string[] columname)
     {
-        // StreamWriter를 이용하여 CSV 파일 생성
+        // 앞에서부터 columname 개수만큼의 컬럼을 CSV 로 쓴다.
+        // 이전 코드는 쉼표가 든 값을 행 데이터 자체에 따옴표를 붙여 바꿔 놓았고, 따옴표/줄바꿈은 처리하지 못했다.
         using (StreamWriter streamWriter = new StreamWriter(filePath, false, Encoding.GetEncoding("EUC-KR")))
         {
-            /*List<string> headers = new List<string>();
-            foreach (DataColumn column in dataTable.Columns)
-            {
-                headers.Add(column.ColumnName);
-            }
-            streamWriter.WriteLine(string.Join(",", headers));*/
+            streamWriter.WriteLine(CsvUtil.JoinLine(columname));
 
-            // 헤더 쓰기
-            streamWriter.WriteLine(string.Join(",", columname));
+            int count = Mathf.Min(columname.Length, dataTable.Columns.Count);
+            string[] cells = new string[count];
 
-            string cellValue = "";
-
-            
-            // 데이터 쓰기
             foreach (DataRow row in dataTable.Rows)
             {
-                List<string> values = new List<string>();
-                //Debug.Log("dataTable.Columns : " + dataTable.Columns.Count);
-
-                
-                for (int columnIndex = 0; columnIndex < columname.Length; columnIndex++)
+                for (int columnIndex = 0; columnIndex < count; columnIndex++)
                 {
-                    DataColumn column = dataTable.Columns[columnIndex];
-
-                    //Debug.Log($"COLUMN columnIndex {columnIndex}: " + column.ColumnName);
-
-
-                    if (row[column].ToString().Contains(","))
-                    {
-                        //Debug.Log("쉼표가 있어" + row[column].ToString());
-
-                        row[column] = $"\"{row[column]}\"";
-                    }
-
-                    values.Add(row[column].ToString());
+                    object value = row[columnIndex];
+                    cells[columnIndex] = value == null || value == DBNull.Value ? "" : value.ToString();
                 }
-                /*
-                foreach (DataColumn column in dataTable.Columns)
-                {
-                    if (row[column].ToString().Contains(","))
-                    {
-                        //Debug.Log("쉼표가 있어" + row[column].ToString());
 
-                        row[column] = $"\"{row[column]}\"";
-                    }
-
-                    values.Add(row[column].ToString());
-                }
-                */
-
-                streamWriter.WriteLine(string.Join(",", values));
+                streamWriter.WriteLine(CsvUtil.JoinLine(cells));
             }
         }
     }
@@ -1324,12 +1540,37 @@ public class ViewExecute : MonoBehaviour
 
     public void getCount()
     {
-        
-        unCheckCount = CountRowsWithCondition(resultTable, "inspection_status_result", "N");
+        // 한 번 훑어서 세 가지 개수를 같이 센다. 값이 바뀌었을 때만 다시 센다.
+        // (이전: 조건마다 DataTable.Select → 페이지를 넘길 때마다 전체를 3번 검색)
+        if (countsDirty)
+        {
+            unCheckCount = 0;
+            checkPassCount = 0;
+            checkCount = 0;
 
-        checkPassCount = CountRowsWithCondition(resultTable, "inspection_status_result", "Z");
+            if (resultTable != null && resultTable.Columns.Contains("inspection_status_result"))
+            {
+                foreach (DataRow row in resultTable.Rows)
+                {
+                    string status = row["inspection_status_result"].ToString();
 
-        checkCount = CountRowsWithCondition(resultTable, "inspection_status_result", "Y");
+                    if (string.Equals(status, "N", StringComparison.OrdinalIgnoreCase))
+                    {
+                        unCheckCount++;
+                    }
+                    else if (string.Equals(status, "Z", StringComparison.OrdinalIgnoreCase))
+                    {
+                        checkPassCount++;
+                    }
+                    else if (string.Equals(status, "Y", StringComparison.OrdinalIgnoreCase))
+                    {
+                        checkCount++;
+                    }
+                }
+            }
+
+            countsDirty = false;
+        }
 
         Text_totalCount.text = "전체항목(" + totalCount + ")";
 
@@ -1391,6 +1632,8 @@ public class ViewExecute : MonoBehaviour
             resultTable = null;
         }
 
+        OnResultTableChanged();
+
         if(OpenTable != null)
         {
             OpenTable.Clear();
@@ -1423,6 +1666,7 @@ public class ViewExecute : MonoBehaviour
             resultTable = null;
         }
 
+        OnResultTableChanged();
 
         if (OpenTable != null)
         {
@@ -1444,233 +1688,109 @@ public class ViewExecute : MonoBehaviour
 
 
     // 결과 저장
+    // 선택한 행의 점검여부/부정청약 판정(7개 컬럼)을 DB 에 한 트랜잭션으로 저장한다.
+    // 이전: 선택 행을 CSV 로 쓰고 C:\korea_rebs 의 파이썬 SaveResult.py 를 실행 (경로 고정, 파이썬 필요, 느림).
     async void Action_ResultSave()
     {
+        List<DataRow> rows = GetSelectedRowsInOrder();
+
+        if (rows.Count == 0)
+        {
+            return;
+        }
+
         mainManager.viewLoading.Open();
+        mainManager.loadMsg.text = "결과 저장 Processing... ";
 
-        // 산출 파일 저장용
-        //string extension = Path.GetExtension(_savePath);
-        //string sendPath = Path.Combine(Path.GetDirectoryName(_savePath), $"SendResult{extension}");
+        bool saved = false;
+        string error = "";
+        int savedCount = -1;
 
-        Debug.Log("Save_Copy");
-
-        DataTable saveTable = resultTable.Copy();
-
-        string[] columnsToRemove = { "NO", "data_idx", "create_date", "change_date", "isChange" }; // 삭제할 칼럼들의 이름 배열
-
-        foreach (string columnName in columnsToRemove)
+        try
         {
-            if (saveTable.Columns.Contains(columnName))
+            if (useLegacyPythonSave)
             {
-                saveTable.Columns.Remove(columnName);
-            }
-        }
-
-        //DataRow[] changeRows = saveTable.Select("isChange = true");
-
-        //Debug.Log("changeRows Count : " + changeRows.Length);
-
-        for (int i = saveTable.Columns.Count - 2; i > 171; i--)
-        {
-            // Debug.Log("I : " + i);
-
-            saveTable.Columns.RemoveAt(i);
-        }
-
-
-        DataRow[] changeRows = saveTable.Select("isSelect = true");
-        
-        //if(changeRows.Length <= 0)
-        //{
-        //    // return;
-        //    CommonErrorPopup commonErrorPopup = Instantiate(mainManager.commonErrorPopup, mainManager.contents);
-
-        //    commonErrorPopup.ShowPopup_OneButton(
-        //    "선택한 항목이 없습니다.",
-        //    "확인",
-        //    () =>
-        //    {
-        //        commonErrorPopup.CloseDestroy();
-        //    }
-        //    );
-
-        //    saveTable = null;
-        //    mainManager.viewLoading.Close();
-        //    return;
-        //}
-
-        SaveDataTableToCsv(changeRows.CopyToDataTable(), _savePath, korcolname);
-
-
-        Debug.Log("전송시작");
-
-        // 결과 저장 유니티
-        //await Save_Data();
-
-        if (File.Exists(_savePath))
-        {
-            mainManager.viewLoading.Open();
-
-            mainManager.isPython = true;
-
-            mainManager.loadMsg.text = "결과 저장 Processing... ";
-
-            var result = await mainManager.RunProcessAsync("python", "SaveResult.py");
-
-            Debug.Log("Result: " + result.ToString());
-
-            mainManager.viewLoading.Close();
-
-            mainManager.isPython = false;
-
-            if (result == 0)
-            {
-                // 저장 성공시
-
-                Debug.Log("전송끝");
-
-                string names = Path.GetFileNameWithoutExtension(_path);
-
-                mainManager.ChangeLogInsert(MenuName, $"{names} 결과 저장");
-
-                UnSelectAll();
-
-                UnSelect();
-
+                saved = await SaveResultWithPython(rows);
             }
             else
             {
-                // 저장 실패 알림
-            }
+                List<object[]> values = new List<object[]>(rows.Count);
 
-        }
-
-        mainManager.viewLoading.Close();
-
-    }
-
-    // 결과 저장용
-    public async Task Save_Data()
-    {
-        // CheckTable 전송
-
-        //Debug.Log("CheckTable ROWS COUNT : " + CheckTable.Rows.Count);
-
-        Debug.Log("Save_Copy");
-
-        DataTable saveTable = resultTable.Copy();
-
-        string[] columnsToRemove = { "NO", "data_idx", "create_date", "change_date", "isChange"}; // 삭제할 칼럼들의 이름 배열
-
-        foreach (string columnName in columnsToRemove)
-        {
-            if (saveTable.Columns.Contains(columnName))
-            {
-                saveTable.Columns.Remove(columnName);
-            }
-        }
-
-        //DataRow[] changeRows = saveTable.Select("isChange = true");
-
-        //Debug.Log("changeRows Count : " + changeRows.Length);
-
-        for (int i = saveTable.Columns.Count - 2; i > 171; i--)
-        {
-            // Debug.Log("I : " + i);
-
-            saveTable.Columns.RemoveAt(i);
-        }
-
-        int saveCount = 0;
-        
-        Debug.Log("SA");
-
-        DataRow[] changeRows = saveTable.Select("isSelect = true");
-
-        Debug.Log("changeRows Count 2 : " + changeRows.Length);
-
-        if (changeRows.Length > 0)
-        {
-            // 선택한 경우만 가져와서 저장시도
-            foreach (DataRow rows in changeRows)
-            {
-                //Debug.Log("rows.0 : " + rows[0].ToString());
-                //Debug.Log("rows.3 : " + rows[3].ToString());
-                //Debug.Log("rows.4 : " + rows[4].ToString());
-                //Debug.Log("rows.5 : " + rows[5].ToString());
-                //Debug.Log("rows.6 : " + rows[6].ToString());
-                //Debug.Log("rows.12 : " + rows[12].ToString());
-                //Debug.Log("rows.13 : " + rows[13].ToString());
-
-                await Task.Delay(1);
-
-                serverManager.UpdateRiskData("tb_riskdata", colname, checkNames, rows.ItemArray);
-
-
-                if(OpenTable != null)
+                foreach (DataRow row in rows)
                 {
-                    string userName = rows.Field<string>("user_name");
-                    Int64 aptNumber = rows.Field<Int64>("apt_number");
-                    string aptDong = rows.Field<string>("apt_dong");
-                    string aptHosu = rows.Field<string>("apt_hosu");
-                    Int64 aptSupType = rows.Field<Int64>("apt_sup_type");
-                    Int64 aptSpSup = rows.Field<Int64>("apt_sp_sup");
-                    Int64 userBirth = rows.Field<Int64>("user_birth");
+                    object[] item = new object[setNames.Length + 1];
+                    item[0] = row["data_no"].ToString();
 
-                    //string rowString = $"UserName: {userName}, AptNumber: {aptNumber}, AptDong: {aptDong}, AptHosu: {aptHosu}, AptSupType: {aptSupType}, AptSpSup: {aptSpSup}, UserBirth: {userBirth}";
+                    for (int i = 0; i < setNames.Length; i++)
+                    {
+                        item[i + 1] = row[setNames[i]];
+                    }
 
-
-                    //Debug.Log("ROWSTRING : " + rowString);
-
-                    DataRow[] matchingRows = OpenTable.Select(
-                        $"성명 = '{userName}' AND " +
-                        $"주택관리번호 = '{aptNumber}' AND " +
-                        $"동 = '{aptDong}' AND " +
-                        $"호수 = '{aptHosu}' AND " +
-                        $"공급유형 = '{aptSupType}' AND " +
-                        $"특별공급종류 = '{aptSpSup}' AND " +
-                        $"생년 = '{userBirth}'"
-                    );
-
-                    matchingRows[0][getNames[0]] = rows[setNames[0]];
-                    matchingRows[0][getNames[1]] = rows[setNames[1]];
-                    matchingRows[0][getNames[2]] = rows[setNames[2]];
-                    matchingRows[0][getNames[3]] = rows[setNames[3]];
-                    matchingRows[0][getNames[4]] = rows[setNames[4]];
-                    matchingRows[0][getNames[5]] = rows[setNames[5]];
-
-                    // inspection_status_result, 점검여부
-                    matchingRows[0][getNames[6]] = rows[setNames[6]];
+                    values.Add(item);
                 }
 
-                saveCount += 1;
-
-                mainManager.loadMsg.text = saveCount + " / " + changeRows.Length;
+                savedCount = await serverManager.SaveExecuteResultsAsync(values);
+                Debug.Log("[ViewExecute] 결과 저장 " + savedCount + " / " + rows.Count);
+                saved = true;
             }
         }
-
-        /*
-
-        foreach (DataRow rows in saveTable.Rows)
+        catch (Exception e)
         {
-            //Debug.Log("rows.0 : " + rows[0].ToString());
-            //Debug.Log("rows.3 : " + rows[3].ToString());
-            //Debug.Log("rows.4 : " + rows[4].ToString());
-            //Debug.Log("rows.5 : " + rows[5].ToString());
-            //Debug.Log("rows.6 : " + rows[6].ToString());
-            //Debug.Log("rows.12 : " + rows[12].ToString());
-            //Debug.Log("rows.13 : " + rows[13].ToString());
+            Debug.LogException(e);
+            error = e.Message;
+        }
 
-            await Task.Delay(1);
+        mainManager.loadMsg.text = "";
+        mainManager.viewLoading.Close();
 
-            //serverManager.UpdateRiskData("tb_riskdata", colname, checkNames, rows.ItemArray);
+        if (saved)
+        {
+            string names = Path.GetFileNameWithoutExtension(_path);
 
-            saveCount += 1;
+            mainManager.ChangeLogInsert(MenuName, $"{names} 결과 저장");
 
-            mainManager.loadMsg.text = saveCount + " / " + saveTable.Rows.Count;
-        }*/
+            UnSelectAll();
 
+            UnSelect();
 
+            // 조회 뒤 다른 곳에서 지워진 행은 저장되지 않는다. 조용히 넘어가지 않고 알린다.
+            if (savedCount >= 0 && savedCount < rows.Count)
+            {
+                ShowErrorPopup($"선택한 {rows.Count}건 중 {savedCount}건을 저장했습니다.\n나머지 {rows.Count - savedCount}건은 DB 에 없습니다(조회 후 삭제됨). 다시 조회해 주세요.");
+            }
+        }
+        else
+        {
+            ShowErrorPopup("결과 저장에 실패했습니다.\n" + error);
+        }
+    }
+
+    // 예전 방식: 선택 행을 SendResult.csv 로 쓰고 SaveResult.py 실행 (useLegacyPythonSave 가 켜져 있을 때만)
+    private async Task<bool> SaveResultWithPython(List<DataRow> rows)
+    {
+        List<string> keys = new List<string>(rows.Count);
+
+        foreach (DataRow row in rows)
+        {
+            keys.Add(row["data_no"].ToString());
+        }
+
+        await serverManager.ExportRiskRowsToCsvAsync(_savePath, keys, null, korcolname, setNames, BuildEditOverlay(rows));
+
+        if (!File.Exists(_savePath))
+        {
+            return false;
+        }
+
+        mainManager.isPython = true;
+
+        var result = await mainManager.RunProcessAsync("python", "SaveResult.py");
+
+        mainManager.isPython = false;
+
+        Debug.Log("Result: " + result.ToString());
+
+        return result == 0;
     }
 
     public void All_Select()
@@ -1736,11 +1856,13 @@ public class ViewExecute : MonoBehaviour
         btn_checkProcess.interactable = false;
         btn_checkResultProcess.interactable = false;
 
-        foreach(DataRow rows in resultTable.Rows)
+        // 선택된 행만 해제 (이전: 전체 행을 돌며 값 변경)
+        foreach (DataRow row in selectedRows)
         {
-            rows["isSelect"] = "False";
+            row["isSelect"] = "False";
         }
 
+        selectedRows.Clear();
     }
 
     // 정렬 버튼
@@ -1762,6 +1884,8 @@ public class ViewExecute : MonoBehaviour
     public void Reset()
     {
         Debug.Log("ViewExecute Reset");
+
+        countsDirty = true;
 
         currentPage = 1;
 
@@ -1804,6 +1928,8 @@ public class ViewExecute : MonoBehaviour
         sortButtons[0].SortStatus = 1;
 
         SortTarget = "NO ASC";
+
+        MarkViewDirty();
     }
 
     public void Set_Sort(SortButton sortButton)
@@ -1856,6 +1982,8 @@ public class ViewExecute : MonoBehaviour
         //SortTarget = "NO ASC";
         // sortButton.Img_SortMode.sprite = Img_ASC;
 
+        MarkViewDirty();
+
         if (resultTable != null)
         {
             UpdateUI();
@@ -1883,7 +2011,7 @@ public class ViewExecute : MonoBehaviour
         if (resultTable != null)
         {
             currentPage += 10;
-            int maxPage = Mathf.CeilToInt((float)resultTable.Rows.Count / itemsPerPage);
+            int maxPage = GetMaxPage();
             if (currentPage > maxPage)
                 currentPage = maxPage;
 
@@ -1906,7 +2034,7 @@ public class ViewExecute : MonoBehaviour
     {
         if (resultTable != null)
         {
-            int maxPage = Mathf.CeilToInt((float)resultTable.Rows.Count / itemsPerPage);
+            int maxPage = GetMaxPage();
             currentPage = maxPage;
             UpdateUI();
         }
@@ -1919,7 +2047,7 @@ public class ViewExecute : MonoBehaviour
         {
             //Debug.Log(" GOTOPAGE :" + pageNumber);
 
-            int maxPage = Mathf.CeilToInt((float)resultTable.Rows.Count / itemsPerPage);
+            int maxPage = GetMaxPage();
             int buttonOffset = (currentPage - 1) / 10 * 10; // Calculate the offset for the page buttons
 
             int targetPage = buttonOffset + pageNumber; // Calculate the target page based on the current offset
@@ -2027,7 +2155,10 @@ public class ViewExecute : MonoBehaviour
         // 정렬 적용
 
         // 페이지 번호 버튼 업데이트
-        int maxPage = Mathf.CeilToInt((float)resultTable.Rows.Count / itemsPerPage);
+        int maxPage = GetMaxPage();
+
+        // 필터를 켠 상태에서 점검여부를 바꾸면 목록이 줄어든다. 마지막 페이지에 있었다면 빈 페이지가 되지 않게 당긴다.
+        currentPage = Mathf.Clamp(currentPage, 1, maxPage);
 
         //Debug.Log("maxPage :" + maxPage);
 
@@ -2123,6 +2254,9 @@ public class ViewExecute : MonoBehaviour
 
 
         listMode = change.value;
+
+        // 점검여부 필터가 바뀌었으니 목록 다시 계산
+        MarkViewDirty();
 
         // 전체 선택 해제
         UnSelect();
@@ -2220,10 +2354,6 @@ public class ViewExecute : MonoBehaviour
     {
         Debug.Log("Action_Reload");
 
-        CheckTable = null;
-
-        CheckTable = new DataTable();
-
         selectMenu.DropdownType(_dropdownType); //검색구분
         selectMenu.CheckDFType(BustType); //적발내용
         selectMenu.CheckRfxgType(RfxgType); //rfxg
@@ -2234,30 +2364,18 @@ public class ViewExecute : MonoBehaviour
 
         mainManager.loadMsg.text = "";
 
-
-        CheckTable = await serverManager.GetMarketManageByImplementationAndRegistration(selectMenu.dateText.FromDate, selectMenu.dateText.ToDate, _dropdownType, selectMenu.input_search.text, CityMenu, BustType, RfxgType, PrecentType);
-
-        //for (int i = 0; i < 4; i++)
-        //{
-        //    if (PrecentType[i])
-        //    {
-        //        index = i;
-        //    }
-        //}
+        // 화면에 필요한 컬럼(약 50개)만 가져온다. 이전에는 214개 컬럼 전체를 가져와서
+        // 수만 건이면 조회에 수 초~수십 초, 메모리도 수백 MB 를 썼다.
+        CheckTable = await serverManager.GetExecuteList(selectMenu.dateText.FromDate, selectMenu.dateText.ToDate, _dropdownType, selectMenu.input_search.text, CityMenu, BustType, RfxgType, PrecentType);
 
         Debug.Log("CheckTable : COUNT " + CheckTable.Rows.Count);
 
-        // 새로운 컬럼 추가        
-        //CheckTable.Columns.Add(new DataColumn("inspection_status_result", typeof(string)));
+        // 새로운 컬럼 추가
         CheckTable.Columns.Add(new DataColumn("isSelect", typeof(string)));
         CheckTable.Columns.Add(new DataColumn("isChange", typeof(string)));
 
-        // CheckTable.Columns.Add(new DataColumn("Error", typeof(int)));
-
-        // CheckTable.Columns.Add(new DataColumn("NO", typeof(int)));
-        resultTable = null;
-
-        resultTable = CheckTable.Copy();
+        // 복사본을 만들지 않고 그대로 쓴다 (이전: CheckTable.Copy() 로 같은 데이터를 한 벌 더 메모리에 올림)
+        resultTable = CheckTable;
 
         mainManager.viewLoading.Close();
 
@@ -2423,188 +2541,151 @@ public class ViewExecute : MonoBehaviour
 
         mainManager.loadMsg.text = "";
 
-        // 서버에 저장된 데이터 호출
-        CheckTable = null;
+        await LoadServerRowsMatchingOpenTable();
+    }
 
-        CheckTable = new DataTable();
+    // 셀 값 → 비교용 문자열 (DB 의 숫자 컬럼과 CSV 의 문자열 컬럼을 같은 형태로 맞춘다)
+    private static string CellText(DataRow row, string column)
+    {
+        object value = row[column];
+        return value == null || value == DBNull.Value ? "\u0000" : value.ToString();
+    }
 
+    // 신청자 매칭 키: 주택관리번호, 동, 호수, 공급유형, 특별공급종류, 생년, 성명
+    private static string MatchKey(DataRow row, string[] columns)
+    {
+        StringBuilder sb = new StringBuilder();
+
+        for (int i = 0; i < columns.Length; i++)
+        {
+            if (i > 0)
+            {
+                sb.Append('\u001f');
+            }
+
+            sb.Append(CellText(row, columns[i]));
+        }
+
+        return sb.ToString();
+    }
+
+    // 파일(OpenTable)의 점검 결과를 DB 행에 덮어쓴다 (이전 Action_ServerLoad/Action_Check 의 반복문과 같은 규칙)
+    private void ApplyOpenTableResult(DataRow row, DataRow open)
+    {
+        // 검사여부, 부정청약판정, 부정청약유형(string), 부정_위장전입, 부정_입주자저축증서매매, 부정_기타
+        for (int i = 0; i < 6; i++)
+        {
+            row[setNames[i]] = open[getNames[i]];
+        }
+
+        // inspection_status_result, 점검여부
+        string status = open[getNames[6]].ToString().ToUpper();
+        row[setNames[6]] = status;
+        row["점검여부"] = status;
+
+        // unauth_sub_decision 부정청약판정
+        if (open[getNames[1]].ToString() == "0")
+        {
+            row["부정청약결과"] = "통과";
+        }
+        else
+        {
+            row["부정청약결과"] = row[setNames[2]];
+        }
+    }
+
+    // DB 조회 결과 중 불러온 파일(OpenTable)에 있는 신청자만 남기고 파일의 점검 결과를 덮어쓴다.
+    // 이전: DB 행마다 OpenTable.Select("성명 = '..' AND ...") 로 파일 전체를 다시 훑었다 → 행 수의 제곱에 비례.
+    //       (수만 건이면 수 분, 이름에 ' 가 있으면 예외)
+    // 지금: 파일 행을 키 → 행 사전으로 한 번 만들고 DB 행마다 바로 찾는다.
+    private async Task LoadServerRowsMatchingOpenTable()
+    {
         selectMenu.DropdownType(_dropdownType); //검색구분
         selectMenu.CheckDFType(BustType); //적발내용
         selectMenu.CheckRfxgType(RfxgType); //rfxg
         selectMenu.CheckRfxgPerType(PrecentType); //퍼센트
         CityMenu = selectMenu.CheckCityToggle(selectMenu.cityToggles);
 
-        //Debug.Log("selectMenu.dateText.FromDate" + selectMenu.dateText.FromDate);
-        //Debug.Log("selectMenu.dateText.ToDate" + selectMenu.dateText.ToDate);
-        //Debug.Log("_dropdownType" + RfxgType);
-        //Debug.Log("_dropdownType" + PrecentType);
-        //Debug.Log("_dropdownType" + CityMenu);
+        // 결과는 지역 변수에 만들고, 끝까지 성공했을 때만 화면 테이블을 바꾼다.
+        // (중간에 예외가 나면 — 예: 파일에 컬럼이 없거나 숫자 칸이 비어 있음 — 로딩 팝업이 닫히지 않고
+        //  반쯤 채운 테이블과 이전 캐시가 섞이던 문제)
+        DataTable matched = null;
+        string error = null;
 
-        
-        CheckTable = await serverManager.GetMarketManageByImplementationAndRegistration(
-            selectMenu.dateText.FromDate, selectMenu.dateText.ToDate, _dropdownType,
-            selectMenu.input_search.text, CityMenu, BustType, RfxgType, PrecentType);
-
-        //Debug.Log("CHEKCTABLE : COUNT " + CheckTable.Rows.Count);
-
-        // 새로운 컬럼 추가        
-        //CheckTable.Columns.Add(new DataColumn("inspection_status_result", typeof(string)));
-        CheckTable.Columns.Add(new DataColumn("isSelect", typeof(string)));
-        CheckTable.Columns.Add(new DataColumn("isChange", typeof(string)));
-
-
-
-        // 두 테이블 비교
-        var innerJoin = (from tb1 in CheckTable.AsEnumerable()
-                         join tb2 in OpenTable.AsEnumerable()
-                         on new
-                         {
-                             col1 = tb1.Field<string>("user_name"),
-                             col2 = tb1.Field<Int64>("apt_number").ToString(),
-                             col3 = tb1.Field<string>("apt_dong").ToString(),
-                             col4 = tb1.Field<string>("apt_hosu").ToString(),
-                             col5 = tb1.Field<Int64>("apt_sup_type").ToString(),
-                             col6 = tb1.Field<Int64>("apt_sp_sup").ToString(),
-                             col7 = tb1.Field<Int64>("user_birth").ToString()
-                         } equals
-                         new
-                         {
-                             col1 = tb2.Field<string>("성명"),
-                             col2 = tb2.Field<string>("주택관리번호"),
-                             col3 = tb2.Field<string>("동"),
-                             col4 = tb2.Field<string>("호수"),
-                             col5 = tb2.Field<string>("공급유형"),
-                             col6 = tb2.Field<string>("특별공급종류"),
-                             col7 = tb2.Field<string>("생년")
-                         }
-                         select tb1);
-
-        if (innerJoin.Count<DataRow>() > 0 == false)
+        try
         {
-            Debug.Log("조회 결과가 없습니다.");
-            item_Empty.SetActive(true);
+            DataTable server = await serverManager.GetExecuteList(
+                selectMenu.dateText.FromDate, selectMenu.dateText.ToDate, _dropdownType,
+                selectMenu.input_search.text, CityMenu, BustType, RfxgType, PrecentType);
 
+            // 새로운 컬럼 추가
+            server.Columns.Add(new DataColumn("isSelect", typeof(string)));
+            server.Columns.Add(new DataColumn("isChange", typeof(string)));
+
+            Dictionary<string, DataRow> openByKey = new Dictionary<string, DataRow>();
+
+            if (OpenTable != null)
+            {
+                foreach (DataRow open in OpenTable.Rows)
+                {
+                    string key = MatchKey(open, openNames);
+
+                    if (!openByKey.ContainsKey(key))
+                    {
+                        openByKey.Add(key, open);
+                    }
+                }
+            }
+
+            matched = server.Clone();
+
+            if (openByKey.Count > 0 && server.Columns.Contains("data_no"))
+            {
+                foreach (DataRow row in server.Rows)
+                {
+                    DataRow open;
+
+                    if (!openByKey.TryGetValue(MatchKey(row, checkNames), out open))
+                    {
+                        continue;
+                    }
+
+                    matched.ImportRow(row);
+                    ApplyOpenTableResult(matched.Rows[matched.Rows.Count - 1], open);
+                }
+            }
+        }
+        catch (Exception e)
+        {
+            Debug.LogException(e);
+            error = e.Message;
+        }
+        finally
+        {
             mainManager.loadMsg.text = "";
-
             mainManager.viewLoading.Close();
+        }
 
+        if (error != null)
+        {
+            // 이전 조회 결과는 그대로 둔다
+            ShowErrorPopup("파일과 조회 결과를 맞추지 못했습니다.\n" + error);
             return;
         }
-        else
+
+        // 원본 조회 결과(server)는 더 쓰지 않으므로 메모리에서 놓아준다
+        CheckTable = matched;
+        resultTable = matched;
+
+        Debug.Log("resultTable : " + resultTable.Rows.Count);
+
+        if (resultTable.Rows.Count == 0)
         {
-            resultTable = innerJoin.CopyToDataTable();
-
-            //Debug.Log("resultTable : " + resultTable.Rows.Count);
-
-            foreach (DataRow row in resultTable.Rows)
-            {
-                string userName = row.Field<string>("user_name");
-                Int64 aptNumber = row.Field<Int64>("apt_number");
-                string aptDong = row.Field<string>("apt_dong");
-                string aptHosu = row.Field<string>("apt_hosu");
-                Int64 aptSupType = row.Field<Int64>("apt_sup_type");
-                Int64 aptSpSup = row.Field<Int64>("apt_sp_sup");
-                Int64 userBirth = row.Field<Int64>("user_birth");
-
-                //string rowString = $"UserName: {userName}, AptNumber: {aptNumber}, AptDong: {aptDong}, AptHosu: {aptHosu}, AptSupType: {aptSupType}, AptSpSup: {aptSpSup}, UserBirth: {userBirth}";
-
-
-                //Debug.Log("ROWSTRING : " + rowString);
-
-                DataRow[] matchingRows = OpenTable.Select(
-                    $"성명 = '{userName}' AND " +
-                    $"주택관리번호 = '{aptNumber}' AND " +
-                    $"동 = '{aptDong}' AND " +
-                    $"호수 = '{aptHosu}' AND " +
-                    $"공급유형 = '{aptSupType}' AND " +
-                    $"특별공급종류 = '{aptSpSup}' AND " +
-                    $"생년 = '{userBirth}'"
-                );
-
-                //Debug.Log("matchingRows Length : " + matchingRows.Length);
-
-                //string inspection_status = matchingRows[0].Field<string>("검사여부");
-                //string unauth_sub_decision = matchingRows[0].Field<string>("부정청약판정");
-                //string unauth_sub_type = matchingRows[0].Field<string>("부정청약유형");
-                //string unauth_regidence_maintain = matchingRows[0].Field<string>("부정_거주지유지");
-                //string unauth_address_maintain = matchingRows[0].Field<string>("부정_주소지유지");
-                //string unauth_disguise_transfer = matchingRows[0].Field<string>("부정_위장전입");
-                //string unauth_forgery_qualifi = matchingRows[0].Field<string>("부정_자격위조");
-                //string unauth_savecerti_sale = matchingRows[0].Field<string>("부정_입주자저축증서매매");
-                //string unauth_disguise_divorce = matchingRows[0].Field<string>("부정_위장이혼");
-                //string unauth_other = matchingRows[0].Field<string>("부정_기타");
-                //string inspection_status_result = matchingRows[0].Field<string>("inspection_status_result");
-
-                //string fieldsString = $"검사여부: {inspection_status}, 부정청약판정: {unauth_sub_decision}," +
-                //    $"부정청약유형: {unauth_sub_type}, 부정_거주지유지: {unauth_regidence_maintain}," +
-                //    $"부정_주소지유지: {unauth_address_maintain}, 부정_위장전입: {unauth_disguise_transfer}," +
-                //    $"부정_자격위조: {unauth_forgery_qualifi}, 부정_입주자저축증서매매: {unauth_savecerti_sale}, " +
-                //    $"부정_위장이혼: {unauth_disguise_divorce}, 부정_기타: {unauth_other}, 점검여부: {inspection_status_result}";
-
-                //Debug.Log("fieldsString : <color=yellow>" + fieldsString + "</color>");
-
-
-                // 데이터 저장
-
-                //Debug.Log($"row : {row[setNames[2]]}, matchingRows : {matchingRows[0][getNames[2]]}");
-                //Debug.Log($"row inspection_status_result : {row[setNames[6]]},  row 점검여부 : {row["점검여부"]},  matchingRows 점검여부 : {matchingRows[0][getNames[6]]}");
-
-                // 검사여부, 부정청약판정, 부정청약유형(string), 부정_위장전입, 부정_입주자저축증서매매, 부정_기타, 점검여부(string)
-                // inspection_status unauth_sub_decision unauth_sub_type unauth_disguise_transfer unauth_savecerti_sale unauth_other inspection_status_result
-
-                // CASE WHEN inner_data.inspection_status_result = 'Z' THEN 'Z' ELSE inner_data.inspection_status_result END as '점검여부', 
-                // CASE WHEN inner_data.unauth_sub_decision = 0 THEN '통과' ELSE unauth_sub_type  END as '부정청약결과',    
-
-                row[setNames[0]] = matchingRows[0][getNames[0]];
-                row[setNames[1]] = matchingRows[0][getNames[1]];
-                row[setNames[2]] = matchingRows[0][getNames[2]];
-                row[setNames[3]] = matchingRows[0][getNames[3]];
-                row[setNames[4]] = matchingRows[0][getNames[4]];
-                row[setNames[5]] = matchingRows[0][getNames[5]];
-
-                //Debug.Log($"2222222222222 row inspection_status_result : {matchingRows[0][getNames[6]]}");
-
-                string originalString = (string)matchingRows[0][getNames[6]];
-                string uppercaseString = originalString.ToUpper();
-
-                //Debug.Log($"2222222222222 row uppercaseString : {uppercaseString}");
-
-                // inspection_status_result, 점검여부
-                row[setNames[6]] = uppercaseString;
-                row["점검여부"] = uppercaseString;
-
-                // unauth_sub_decision 부정청약판정
-                if (matchingRows[0][getNames[1]].ToString() == "0")
-                {
-                    row["부정청약결과"] = "통과";
-                }
-                else
-                {
-                    row["부정청약결과"] = row[setNames[2]];
-                }
-
-                //Debug.Log($"2222222222222 row : {row[setNames[2]]}, matchingRows : {matchingRows[0][getNames[2]]} , {row["부정청약결과"]}" );
-                //Debug.Log($"2222222222222 row inspection_status_result : {row[setNames[6]]},  row 점검여부 : {row["점검여부"]},  matchingRows 점검여부 : {matchingRows[0][getNames[6]]}");
-            }
-
-
-            mainManager.loadMsg.text = "";
-
-            mainManager.viewLoading.Close();
-
-            if (resultTable.Rows.Count == 0)
-            {
-                item_Empty.SetActive(true);
-            }
-            else
-            {
-                item_Empty.SetActive(false);
-
-                SetListView2();
-            }
-
+            Debug.Log("조회 결과가 없습니다.");
         }
 
+        // 결과가 없어도 이전 조회 결과가 남지 않도록 목록을 새 결과로 그린다
+        SetListView2();
     }
 
     string[] checkNames = { "apt_number", "apt_dong", "apt_hosu", "apt_sup_type", "apt_sp_sup", "user_birth", "user_name" };
@@ -2690,190 +2771,10 @@ public class ViewExecute : MonoBehaviour
 
         Debug.Log("OpenTable : " + OpenTable.Rows.Count);
 
-        // 서버에 저장된 데이터 호출
-
-        Debug.Log("[ViewExecute][Action_ServerLoad]");
-
-        CheckTable = null;
-
-        CheckTable = new DataTable();
-
-        selectMenu.DropdownType(_dropdownType); //검색구분
-        selectMenu.CheckDFType(BustType); //적발내용
-        selectMenu.CheckRfxgType(RfxgType); //rfxg
-        selectMenu.CheckRfxgPerType(PrecentType); //퍼센트
-        CityMenu = selectMenu.CheckCityToggle(selectMenu.cityToggles);
-
-        //Debug.Log("selectMenu.dateText.FromDate" + selectMenu.dateText.FromDate);
-        //Debug.Log("selectMenu.dateText.ToDate" + selectMenu.dateText.ToDate);
-        //Debug.Log("_dropdownType" + RfxgType);
-        //Debug.Log("_dropdownType" + PrecentType);
-        //Debug.Log("_dropdownType" + CityMenu);
-
-        CheckTable = await serverManager.GetMarketManageByImplementationAndRegistration(
-            selectMenu.dateText.FromDate, selectMenu.dateText.ToDate, _dropdownType,
-            selectMenu.input_search.text, CityMenu, BustType, RfxgType, PrecentType);
-
-        //Debug.Log("CHEKCTABLE : COUNT " + CheckTable.Rows.Count);
-
-        // 새로운 컬럼 추가        
-        //CheckTable.Columns.Add(new DataColumn("inspection_status_result", typeof(string)));
-        CheckTable.Columns.Add(new DataColumn("isSelect", typeof(string)));
-        CheckTable.Columns.Add(new DataColumn("isChange", typeof(string)));
-
-
-        // 두 테이블 비교
-        var innerJoin = (from tb1 in CheckTable.AsEnumerable()
-                         join tb2 in OpenTable.AsEnumerable()
-                         on new
-                         {
-                             col1 = tb1.Field<string>("user_name"),
-                             col2 = tb1.Field<Int64>("apt_number").ToString(),
-                             col3 = tb1.Field<string>("apt_dong").ToString(),
-                             col4 = tb1.Field<string>("apt_hosu").ToString(),
-                             col5 = tb1.Field<Int64>("apt_sup_type").ToString(),
-                             col6 = tb1.Field<Int64>("apt_sp_sup").ToString(),
-                             col7 = tb1.Field<Int64>("user_birth").ToString()
-                         } equals
-                         new
-                         {
-                             col1 = tb2.Field<string>("성명"),
-                             col2 = tb2.Field<string>("주택관리번호"),
-                             col3 = tb2.Field<string>("동"),
-                             col4 = tb2.Field<string>("호수"),
-                             col5 = tb2.Field<string>("공급유형"),
-                             col6 = tb2.Field<string>("특별공급종류"),
-                             col7 = tb2.Field<string>("생년")
-                         }
-                         select tb1);
-
-        if (innerJoin.Count<DataRow>() > 0 == false)
-        {
-            Debug.Log("조회 결과가 없습니다.");
-            item_Empty.SetActive(true);
-
-            mainManager.loadMsg.text = "";
-
-            mainManager.viewLoading.Close();
-
-            return;
-        }
-        else
-        {
-            resultTable = innerJoin.CopyToDataTable();
-
-            Debug.Log("resultTable : " + resultTable.Rows.Count);
-
-            foreach (DataRow row in resultTable.Rows)
-            {
-                string userName = row.Field<string>("user_name");
-                Int64 aptNumber = row.Field<Int64>("apt_number");
-                string aptDong = row.Field<string>("apt_dong");
-                string aptHosu = row.Field<string>("apt_hosu");
-                Int64 aptSupType = row.Field<Int64>("apt_sup_type");
-                Int64 aptSpSup = row.Field<Int64>("apt_sp_sup");
-                Int64 userBirth = row.Field<Int64>("user_birth");
-
-                //string rowString = $"UserName: {userName}, AptNumber: {aptNumber}, AptDong: {aptDong}, AptHosu: {aptHosu}, AptSupType: {aptSupType}, AptSpSup: {aptSpSup}, UserBirth: {userBirth}";
-
-
-                //Debug.Log("ROWSTRING : " + rowString);
-
-                DataRow[] matchingRows = OpenTable.Select(
-                    $"성명 = '{userName}' AND " +
-                    $"주택관리번호 = '{aptNumber}' AND " +
-                    $"동 = '{aptDong}' AND " +
-                    $"호수 = '{aptHosu}' AND " +
-                    $"공급유형 = '{aptSupType}' AND " +
-                    $"특별공급종류 = '{aptSpSup}' AND " +
-                    $"생년 = '{userBirth}'"
-                );
-
-                //Debug.Log("matchingRows Length : " + matchingRows.Length);
-
-                //string inspection_status = matchingRows[0].Field<string>("검사여부");
-                //string unauth_sub_decision = matchingRows[0].Field<string>("부정청약판정");
-                //string unauth_sub_type = matchingRows[0].Field<string>("부정청약유형");
-                //string unauth_regidence_maintain = matchingRows[0].Field<string>("부정_거주지유지");
-                //string unauth_address_maintain = matchingRows[0].Field<string>("부정_주소지유지");
-                //string unauth_disguise_transfer = matchingRows[0].Field<string>("부정_위장전입");
-                //string unauth_forgery_qualifi = matchingRows[0].Field<string>("부정_자격위조");
-                //string unauth_savecerti_sale = matchingRows[0].Field<string>("부정_입주자저축증서매매");
-                //string unauth_disguise_divorce = matchingRows[0].Field<string>("부정_위장이혼");
-                //string unauth_other = matchingRows[0].Field<string>("부정_기타");
-                //string inspection_status_result = matchingRows[0].Field<string>("inspection_status_result");
-
-                //string fieldsString = $"검사여부: {inspection_status}, 부정청약판정: {unauth_sub_decision}," +
-                //    $"부정청약유형: {unauth_sub_type}, 부정_거주지유지: {unauth_regidence_maintain}," +
-                //    $"부정_주소지유지: {unauth_address_maintain}, 부정_위장전입: {unauth_disguise_transfer}," +
-                //    $"부정_자격위조: {unauth_forgery_qualifi}, 부정_입주자저축증서매매: {unauth_savecerti_sale}, " +
-                //    $"부정_위장이혼: {unauth_disguise_divorce}, 부정_기타: {unauth_other}, 점검여부: {inspection_status_result}";
-
-                //Debug.Log("fieldsString : <color=yellow>" + fieldsString + "</color>");
-
-
-                // 데이터 저장
-
-                //Debug.Log($"row : {row[setNames[2]]}, matchingRows : {matchingRows[0][getNames[2]]}");
-                //Debug.Log($"row inspection_status_result : {row[setNames[6]]},  row 점검여부 : {row["점검여부"]},  matchingRows 점검여부 : {matchingRows[0][getNames[6]]}");
-
-                // 검사여부, 부정청약판정, 부정청약유형(string), 부정_위장전입, 부정_입주자저축증서매매, 부정_기타, 점검여부(string)
-                // inspection_status unauth_sub_decision unauth_sub_type unauth_disguise_transfer unauth_savecerti_sale unauth_other inspection_status_result
-
-                // CASE WHEN inner_data.inspection_status_result = 'Z' THEN 'Z' ELSE inner_data.inspection_status_result END as '점검여부', 
-                // CASE WHEN inner_data.unauth_sub_decision = 0 THEN '통과' ELSE unauth_sub_type  END as '부정청약결과',    
-
-                row[setNames[0]] = matchingRows[0][getNames[0]];
-                row[setNames[1]] = matchingRows[0][getNames[1]];
-                row[setNames[2]] = matchingRows[0][getNames[2]];
-                row[setNames[3]] = matchingRows[0][getNames[3]];
-                row[setNames[4]] = matchingRows[0][getNames[4]];
-                row[setNames[5]] = matchingRows[0][getNames[5]];
-
-                string originalString = (string)matchingRows[0][getNames[6]];
-                string uppercaseString = originalString.ToUpper();
-
-                // inspection_status_result, 점검여부
-                row[setNames[6]] = uppercaseString;
-                row["점검여부"] = uppercaseString;
-
-                // inspection_status_result, 점검여부
-                //row[setNames[6]] = matchingRows[0][getNames[6]];
-                //row["점검여부"] = matchingRows[0][getNames[6]];
-
-                // unauth_sub_decision 부정청약판정
-                if (matchingRows[0][getNames[1]].ToString() == "0")
-                {
-                    row["부정청약결과"] = "통과";
-                }
-                else
-                {
-                    row["부정청약결과"] = row[setNames[2]];
-                }
-
-                //Debug.Log($"2222222222222 row : {row[setNames[2]]}, matchingRows : {matchingRows[0][getNames[2]]} , {row["부정청약결과"]}" );
-                //Debug.Log($"2222222222222 row inspection_status_result : {row[setNames[6]]},  row 점검여부 : {row["점검여부"]},  matchingRows 점검여부 : {matchingRows[0][getNames[6]]}");
-            }
-
-
-            mainManager.loadMsg.text = "";
-
-            mainManager.viewLoading.Close();
-
-            if (resultTable.Rows.Count == 0)
-            {
-                item_Empty.SetActive(true);
-            }
-            else
-            {
-                item_Empty.SetActive(false);
-
-                SetListView2();
-            }
-        }
-
-
+        // 서버에 저장된 데이터 호출 + 파일과 매칭
+        await LoadServerRowsMatchingOpenTable();
     }
+
     public async void Action_EmptyCheck()
     {  
         Action_ServerLoad();
@@ -2907,76 +2808,50 @@ public class ViewExecute : MonoBehaviour
 
         Debug.Log("전송끝");
 
-        CheckTable = null;
-
-        CheckTable = new DataTable();
-
         selectMenu.DropdownType(_dropdownType); //검색구분
         selectMenu.CheckDFType(BustType); //적발내용
         selectMenu.CheckRfxgType(RfxgType); //rfxg
         selectMenu.CheckRfxgPerType(PrecentType); //퍼센트
         CityMenu = selectMenu.CheckCityToggle(selectMenu.cityToggles);
 
-
-        CheckTable = await serverManager.GetMarketManageByImplementationAndRegistration(
+        CheckTable = await serverManager.GetExecuteList(
             selectMenu.dateText.FromDate, selectMenu.dateText.ToDate, _dropdownType, 
             selectMenu.input_search.text, CityMenu, BustType, RfxgType, PrecentType);
 
-        //for (int i = 0; i < 4; i++)
-        //{
-        //    if (PrecentType[i])
-        //    {
-        //        index = i;
-        //    }
-        //}
-
         Debug.Log("CHEKCTABLE : COUNT " + CheckTable.Rows.Count);
 
-        // 새로운 컬럼 추가        
-        //CheckTable.Columns.Add(new DataColumn("inspection_status_result", typeof(string)));
+        // 새로운 컬럼 추가
         CheckTable.Columns.Add(new DataColumn("isSelect", typeof(string)));
         CheckTable.Columns.Add(new DataColumn("isChange", typeof(string)));
 
-        // CheckTable.Columns.Add(new DataColumn("Error", typeof(int)));
-
-        // CheckTable.Columns.Add(new DataColumn("NO", typeof(int)));
+        resultTable = CheckTable;
 
         SetListView();
 
         mainManager.viewLoading.Close();
     }
 
+    // 파일 행 전체를 tb_checkresult 에 한 트랜잭션으로 넣는다 (이전: 행마다 연결 + 자동 커밋 + Task.Delay(1))
     public async Task Send_Data()
     {
-        // riskTable 전송
-
         Debug.Log("ROWS COUNT : " + OpenTable.Rows.Count);
 
-        int saveCount = 0;
+        List<object[]> rows = new List<object[]>(OpenTable.Rows.Count);
 
-        foreach (DataRow rows in OpenTable.Rows)
+        foreach (DataRow row in OpenTable.Rows)
         {
-            //Debug.Log("rows name : " + rows["성명"].ToString());
-
-            await Task.Delay(1);
-
-            serverManager.InsertRiskData("tb_checkresult", colname, rows.ItemArray);
-
-            saveCount += 1;
-
-            mainManager.loadMsg.text = saveCount + " / " + OpenTable.Rows.Count;
+            rows.Add(row.ItemArray);
         }
+
+        int total = rows.Count;
+
+        // Progress<int> 는 만든 스레드(메인)에서 콜백이 실행되므로 UI 를 바꿔도 안전하다
+        Progress<int> progress = new Progress<int>(n => mainManager.loadMsg.text = n + " / " + total);
+
+        await serverManager.InsertRowsAsync("tb_checkresult", colname, rows, progress);
+
+        mainManager.loadMsg.text = total + " / " + total;
     }
-
-    //public void Update()
-    //{
-    //    if(Input.GetKeyDown(KeyCode.Space))
-    //    {
-    //        var vcount = resultTable.Select("isSelect = True");
-
-    //        Debug.Log("선택한 갯수 : " + vcount.Length);
-    //    }
-    //}
 
     public void UpdateView()
     {
@@ -2985,42 +2860,23 @@ public class ViewExecute : MonoBehaviour
 
         ClearListView();
 
-        // 현재 정렬 버튼으로
+        // 현재 정렬/필터 결과 (바뀐 게 없으면 캐시 사용 → 페이지 이동 시 전체 복사/검색 없음)
+        DataRow[] rowsInView = GetViewRows();
 
-        resultTable.DefaultView.Sort = SortTarget;
+        selectrowCount = rowsInView.Length;
 
-        listTable = null;
-
-        listTable = resultTable.DefaultView.ToTable();
-
-        //재생성 함수 들어갈곳
-        string inspection_status = "";
-
-
-        switch (listMode)
-        {
-            case 1: inspection_status = "점검여부 = 'Z'"; break;
-            case 2: inspection_status = "점검여부 = 'N'"; break;
-            case 3: inspection_status = "점검여부 = 'Y'"; break;
-        }
-
-        DataRow[] selectedRows = listTable.Select(inspection_status);
-        //  Debug.Log("selectedRows : " + selectedRows.Length) ;
-
-        selectrowCount = selectedRows.Count();
-
-        int startIndex = (currentPage - 1) * itemsPerPage;
-        int endIndex = Mathf.Min(startIndex + itemsPerPage, selectedRows.Length);
+        int startIndex = Mathf.Max(0, (currentPage - 1) * itemsPerPage);
+        int endIndex = Mathf.Min(startIndex + itemsPerPage, rowsInView.Length);
 
         string cellValue = "";
 
         for (var rowIndex = startIndex; rowIndex < endIndex; rowIndex++)
         {
-            var row = selectedRows[rowIndex];
+            var row = rowsInView[rowIndex];
 
             Item_Check item = Instantiate(item_Check, contents);
 
-            item.toggle.isOn = bool.Parse(row["isSelect"].ToString());
+            item.toggle.isOn = IsTrueText(row["isSelect"]);
 
             item.id = row["data_no"].ToString();
 
@@ -3122,8 +2978,6 @@ public class ViewExecute : MonoBehaviour
 
             item.uploadDate.text = row["업로드일시"].ToString();
 
-            //double resultrisk = (double)row["위험도"] * 100;
-
             double resultrisk = (double.Parse(row["위험도"].ToString()) * 100);
 
             item.risk.text = (Mathf.Floor(float.Parse(resultrisk.ToString()) * 10f) / 10f).ToString("N1");
@@ -3145,7 +2999,7 @@ public class ViewExecute : MonoBehaviour
             item_Empty.SetActive(false);
         }
 
-        totalCount = resultTable.Rows.Count;
+        totalCount = resultTable != null ? resultTable.Rows.Count : 0;
 
         ResetView();
 
@@ -3167,385 +3021,46 @@ public class ViewExecute : MonoBehaviour
             }
         }    
     }
+
+    // 이전에는 SetListView 와 같은 코드가 한 벌 더 있었다
     public void SetListView2()
     {
-        Debug.Log("SetListView2");
-
-        ClearListView();
-
-        // NO로 정렬 지정
-        Clear_Sort();
-
-        unCheckCount = 0;
-
-        for (var rowIndex = 0; rowIndex < resultTable.Rows.Count; rowIndex++)
-        {
-            // 행 가져오기
-            var slot = resultTable.Rows[rowIndex];
-
-            slot["isSelect"] = "false";
-            slot["isChange"] = "false";
-
-            // 기본은 미점검? // Z ="해당없음", N:미점검, Y:점검완료
-            //slot["inspection_status_result"] = "N";
-
-            // 위험도 데이터 추가 
-
-        }
-
-        resultTable.DefaultView.Sort = SortTarget;
-
-        listTable = null;
-
-        listTable = resultTable.DefaultView.ToTable();
-
-        int endIndex = Mathf.Min(listCount, listTable.Rows.Count);
-
-        selectrowCount = endIndex;
-
-        string cellValue = "";
-
-        for (var rowIndex = 0; rowIndex < endIndex; rowIndex++)
-        {
-            var slot = listTable.Rows[rowIndex];
-
-            Item_Check item = Instantiate(item_Check, contents);
-
-            item.toggle.isOn = false;
-
-            item.id = slot["data_no"].ToString();
-            //item.no.text = slot["NO"].ToString();
-            item.no.text = (rowIndex + 1).ToString();
-
-            cellValue = slot["점검여부"].ToString();
-
-            if (cellValue == "N")
-            {
-                cellValue = "<color=#ef8674>" + cellValue + "</color>";
-            }
-            else if (cellValue == "Y")
-            {
-                cellValue = "<color=#2dbbbc>" + cellValue + "</color>";
-
-            }
-            else
-            {
-                cellValue = "해당없음";
-
-            }
-
-            item.check.text = cellValue;
-
-            cellValue = slot["부정청약결과"].ToString();
-
-            if (cellValue == "통과")
-            {
-                cellValue = "<color=#2dbbbc>" + cellValue + "</color>";
-            }
-            else
-            {
-                // cellValue = slot["부정청약결과"].ToString();
-
-                cellValue = "<color=#ef8674>" + cellValue + "</color>";
-
-
-            }
-
-            item.checkResult.text = cellValue;
-
-
-            item.aptNum.text = slot["주택관리번호"].ToString();
-
-            item.aptType.text = slot["민영국민"].ToString();
-            item.aptName.text = slot["단지명"].ToString();
-
-            item.aptDong.text = slot["동"].ToString();
-
-            item.aptHosu.text = slot["호수"].ToString();
-
-            item.userName.text = slot["성명"].ToString();
-
-            item.userBirth.text = slot["생년월일"].ToString().PadLeft(6, '0');
-
-            item.userAge.text = slot["연령"].ToString();
-
-            if (slot["공급유형"].ToString() == "10")
-            {
-                item.supType.text = "일반";
-                item.detailType.text = checkDeatilType("0");
-            }
-            else
-            {
-                item.supType.text = "특별";
-
-                item.detailType.text = checkDeatilType(slot["세부유형타입"].ToString());
-            }
-
-            item.relation.text = slot["세대주관계"].ToString();
-
-            item.userchangeDate.text = mainManager.DateFormat(slot["변경일자"].ToString());
-
-            item.userspouse.text = slot["배우자"].ToString();
-
-            item.housemember.text = slot["세대원수"].ToString();
-
-            item.hp_housememeber.text = slot["분리세대"].ToString();
-
-            item.phonedup.text = slot["폰중복"].ToString();
-
-            item.ipdupwin.text = slot["ip중복당첨"].ToString();
-
-            item.ipdupapp.text = slot["ip중복신청"].ToString();
-
-            item.appclass.text = slot["신청거주구분"].ToString();
-
-            item.winclass.text = slot["당첨거주구분"].ToString();
-
-            item.addressmatch.text = slot["주소일치여부"].ToString();
-
-            item.adminaddress.text = slot["등본주소"].ToString();
-
-            item.inputaddress.text = slot["입력주소"].ToString();
-
-            item.recomType.text = slot["기관추천"].ToString();
-
-            item.uploadDate.text = slot["업로드일시"].ToString();
-
-            //double resultrisk = (double)slot["위험도"] * 100;
-
-            double resultrisk = (double.Parse(slot["위험도"].ToString()) * 100);
-
-            item.risk.text = (Mathf.Floor(float.Parse(resultrisk.ToString()) * 10f) / 10f).ToString("N1");
-
-            item.viewExecute = this;
-
-            item.Init();
-
-            list_Check.Add(item);
-            list_Toggles.Add(item.toggle);
-        }
-
-        if (list_Check.Count == 0)
-        {
-            item_Empty.SetActive(true);
-        }
-        else
-        {
-            item_Empty.SetActive(false);
-        }
-
-        totalCount = resultTable.Rows.Count;
-
-        ResetView();
-
-        getCount();
-
-        // 처음으로 세팅
-        GoToFirstPage();
-
-        SetUpdateUI();
-        if (list_Check.Count > 0)
-        {
-            if (AreAllTogglesOn())
-            {
-                isAll = true;
-                btn_On.gameObject.SetActive(true);
-            }
-            else
-            {
-                isAll = false;
-                btn_On.gameObject.SetActive(false);
-            }
-        }
+        SetListView();
     }
 
-
+    // 새 조회 결과를 첫 페이지부터 그린다
     public void SetListView()
     {
         ClearListView();
 
+        if (resultTable != null)
+        {
+            foreach (DataRow slot in resultTable.Rows)
+            {
+                slot["isSelect"] = "false";
+                slot["isChange"] = "false";
+
+                // 기본은 미점검? // Z ="해당없음", N:미점검, Y:점검완료
+            }
+        }
+
+        // data_no 인덱스, 선택 목록, 정렬/필터 캐시 초기화
+        OnResultTableChanged();
+
         // NO로 정렬 지정
         Clear_Sort();
 
         unCheckCount = 0;
 
-        for (var rowIndex = 0; rowIndex < resultTable.Rows.Count; rowIndex++)
-        {
-            // 행 가져오기
-            var slot = resultTable.Rows[rowIndex];
-
-            slot["isSelect"] = "false";
-            slot["isChange"] = "false";
-
-            // 기본은 미점검? // Z ="해당없음", N:미점검, Y:점검완료
-            //slot["inspection_status_result"] = "N";
-
-            // 위험도 데이터 추가 
-
-        }
-
-        resultTable.DefaultView.Sort = SortTarget;
-
-        listTable = null;
-
-        listTable = resultTable.DefaultView.ToTable();
-
-        int endIndex = Mathf.Min(listCount, listTable.Rows.Count);
-
-        selectrowCount = endIndex;
-        string cellValue = "";
-
-        for (var rowIndex = 0; rowIndex < endIndex; rowIndex++)
-        {
-            var slot = listTable.Rows[rowIndex];
-
-            Item_Check item = Instantiate(item_Check, contents);
-
-            item.toggle.isOn = false;
-
-            item.id = slot["data_no"].ToString();
-            //item.no.text = slot["NO"].ToString();
-            item.no.text = (rowIndex + 1).ToString();
-
-            cellValue = slot["점검여부"].ToString();
-
-            if (cellValue == "N")
-            {
-                cellValue = "<color=#ef8674>" + cellValue + "</color>";
-            }
-            else if (cellValue == "Y")
-            {
-                cellValue = "<color=#2dbbbc>" + cellValue + "</color>";
-
-            }
-            else
-            {
-                cellValue = "해당없음";
-
-            }
-
-            item.check.text = cellValue;
-
-            cellValue = slot["부정청약결과"].ToString();
-
-            if (cellValue == "통과")
-            {
-                cellValue = "<color=#2dbbbc>" + cellValue + "</color>";
-            }
-            else
-            {
-                // cellValue = slot["부정청약결과"].ToString();
-
-                cellValue = "<color=#ef8674>" + cellValue + "</color>";
-
-
-            }
-
-            item.checkResult.text = cellValue;
-
-
-            item.aptNum.text = slot["주택관리번호"].ToString();
-
-            item.aptType.text = slot["민영국민"].ToString();
-            item.aptName.text = slot["단지명"].ToString();
-
-            item.aptDong.text = slot["동"].ToString();
-
-            item.aptHosu.text = slot["호수"].ToString();
-
-            item.userName.text = slot["성명"].ToString();
-
-            item.userBirth.text = slot["생년월일"].ToString().PadLeft(6, '0');
-
-            item.userAge.text = slot["연령"].ToString();
-
-            if(slot["공급유형"].ToString() == "10")
-            {
-                item.supType.text = "일반";
-                item.detailType.text = checkDeatilType("0");
-            }
-            else
-            {
-                item.supType.text = "특별";
-
-                item.detailType.text = checkDeatilType(slot["세부유형타입"].ToString());
-            }
-
-            item.relation.text = slot["세대주관계"].ToString();
-
-            item.userchangeDate.text = mainManager.DateFormat(slot["변경일자"].ToString());
-
-            item.userspouse.text = slot["배우자"].ToString();
-
-            item.housemember.text = slot["세대원수"].ToString();
-
-            item.hp_housememeber.text = slot["분리세대"].ToString();
-
-            item.phonedup.text = slot["폰중복"].ToString();
-
-            item.ipdupwin.text = slot["ip중복당첨"].ToString();
-
-            item.ipdupapp.text = slot["ip중복신청"].ToString();
-
-            item.appclass.text = slot["신청거주구분"].ToString();
-
-            item.winclass.text = slot["당첨거주구분"].ToString();
-
-            item.addressmatch.text = slot["주소일치여부"].ToString();
-
-            item.adminaddress.text = slot["등본주소"].ToString();
-
-            item.inputaddress.text = slot["입력주소"].ToString();
-
-            item.recomType.text = slot["기관추천"].ToString();
-
-            item.uploadDate.text = slot["업로드일시"].ToString();
-
-            //double resultrisk = (double)slot["위험도"] * 100;
-
-            double resultrisk = (double.Parse(slot["위험도"].ToString()) * 100);
-
-            item.risk.text = (Mathf.Floor(float.Parse(resultrisk.ToString()) * 10f) / 10f).ToString("N1");
-
-            item.viewExecute = this;
-
-            item.Init();
-
-            list_Check.Add(item);
-            list_Toggles.Add(item.toggle);
-        }
-
-        if (list_Check.Count == 0)
+        if (resultTable == null)
         {
             item_Empty.SetActive(true);
-        }
-        else
-        {
-            item_Empty.SetActive(false);
+            return;
         }
 
-        totalCount = resultTable.Rows.Count;
-        
-        ResetView();
-
-        getCount();
-
-        // 처음으로 세팅
+        // 처음으로 세팅 (UpdateUI → UpdateView 에서 목록/개수/페이지 버튼을 그린다)
+        // 이전에는 첫 페이지를 여기서 한 번 그리고 GoToFirstPage 에서 다시 그렸다.
         GoToFirstPage();
-
-        SetUpdateUI();
-
-        if (AreAllTogglesOn())
-        {
-            isAll = true;
-            btn_On.gameObject.SetActive(true);
-        }
-        else
-        {
-            isAll = false;
-            btn_On.gameObject.SetActive(false);
-        }
-
     }
 
     // 특별공급 유형 변환
@@ -3662,13 +3177,10 @@ public class ViewExecute : MonoBehaviour
     {
         bool allPass = true;
 
-        DataRow[] rows = resultTable.Select("isSelect = True");
-
-        // Debug.Log("rows : " + rows.Length);
-
-        if(rows.Length > 0)
+        // 체크박스를 누를 때마다 불리므로 전체 행이 아니라 선택된 행만 본다
+        if (selectedRows.Count > 0)
         {
-            foreach (DataRow row in rows)
+            foreach (DataRow row in selectedRows)
             {
                 //Debug.Log(" 점검여부 Check = " + row["점검여부"].ToString());
                 //Debug.Log(" 부정청약결과 처리 = " + row["부정청약결과"].ToString());
@@ -3702,13 +3214,9 @@ public class ViewExecute : MonoBehaviour
     {
         bool allY = true;
 
-        DataRow[] rows = resultTable.Select("isSelect = True");
-
-        // Debug.Log("rows : " + rows.Length);
-
-        if(rows.Length > 0)
+        if (selectedRows.Count > 0)
         {
-            foreach (DataRow row in rows)
+            foreach (DataRow row in selectedRows)
             {
                 // Debug.Log(" AreAllStatusY 점검여부 = " + row["점검여부"].ToString());
 
@@ -3795,9 +3303,9 @@ public class ViewExecute : MonoBehaviour
 
             // 기본 차순 NO로 오름 차순 정렬한다.
             CheckTable = null;
-            listTable = null;
             OpenTable = null;
             resultTable = null;
+            OnResultTableChanged();
 
             item_Empty.SetActive(true);
 
@@ -3827,9 +3335,9 @@ public class ViewExecute : MonoBehaviour
 
         // 기본 차순 NO로 오름 차순 정렬한다.
         CheckTable = null;
-        listTable = null;
         OpenTable = null;
         resultTable = null;
+        OnResultTableChanged();
     }
 
     // 출력

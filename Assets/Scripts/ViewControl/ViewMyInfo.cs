@@ -204,11 +204,20 @@ public class ViewMyInfo : BaseView
         UI_reset_password_input_PW_Guide.gameObject.SetActive(false);
         UI_reset_password_input_PW2_Guide.gameObject.SetActive(false);
 
+        // 회원 정보를 못 읽었으면(조회 실패) 바꾸지 않는다. 이 검사가 없으면 빈 아이디로 저장하고 성공처럼 보인다.
+        if (memberTable == null || memberTable.Rows.Count == 0)
+        {
+            UI_reset_password_input_CPW_Guide.text = "회원 정보를 불러오지 못했습니다. 다시 시도해 주세요.";
+            UI_reset_password_input_CPW_Guide.gameObject.SetActive(true);
+            LayoutRebuilder.ForceRebuildLayoutImmediate((RectTransform)parent);
+            return;
+        }
+
         foreach (DataRow row in memberTable.Rows)
         {
             userId = row["mem_userId"].ToString();
 
-            if (currentPasseword != mainManager.Decode(row["mem_password"].ToString()))
+            if (!PasswordHasher.Verify(currentPasseword, row["mem_password"].ToString()))
             {
                 checkCurrentPasswordError = true;
                 UI_reset_password_input_CPW_Guide.text = "현재 비밀번호가 올바르지 않습니다.";
@@ -244,7 +253,7 @@ public class ViewMyInfo : BaseView
         //비밀번호 변경
         if (!checkCurrentPasswordError && !checkNewPasswordError && !checkNewPassword2Error)
         {
-            serverManager.UpdateUserPassword(userId, mainManager.Encode(newPassword));
+            serverManager.UpdateUserPassword(userId, PasswordHasher.Hash(newPassword));
 
             //대시보드로 이동
             UI_reset_password_input_CPW_Guide.text = "";
